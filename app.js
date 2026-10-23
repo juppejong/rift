@@ -17,7 +17,7 @@ const tr = (key, en) => { const e = window.RC_NL?.t?.[key]; return e && en && e[
 const TAG_NL = { Mage: 'Mage', Assassin: 'Assassin', Tank: 'Tank', Fighter: 'Vechter', Marksman: 'Schutter', Support: 'Support' };
 
 const S = { ver: '', champs: {}, champList: [], items: {}, runes: [], spells: {}, full: {}, favs: [], ui: { setup: 0, spell: 0, fav: false } };
-const laneFilter = { q: '', sort: 'fit', diff: 0, flex: true, role: '' };
+const laneFilter = { q: '', sort: 'fit', diff: 0, flex: true, role: '', min: true };
 
 /* ---------- opslag ---------- */
 try { S.favs = JSON.parse(localStorage.getItem('rc_favs') || '[]'); } catch { S.favs = []; }
@@ -165,7 +165,7 @@ function resolveSetup(s) {
 }
 
 /* ---------- echte matchdata (stats.json, gemaakt met collect.js) ---------- */
-const MIN_GAMES = 8;
+const MIN_GAMES = 10;
 const wilson = (w, n) => { if (!n) return 0; const z = 1.645, p = w / n; return (p + z * z / (2 * n) - z * Math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)) / (1 + z * z / n); };
 function buildTiers() {
   S.tier = {};
@@ -307,14 +307,18 @@ function renderLane(app, [lane = 'TOP']) {
     <select id="lrole"><option value="">Alle rollen</option>${roles.map(r => `<option ${laneFilter.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
     <select id="ldiff"><option value="0">Elke moeilijkheid</option><option value="4">Makkelijk (≤4)</option><option value="7">Gemiddeld (≤7)</option><option value="10">Moeilijk (alles)</option></select>
     <label class="mute"><input type="checkbox" id="lflex" ${laneFilter.flex ? 'checked' : ''}> toon flex-picks</label>
+    ${S.stats ? `<label class="mute"><input type="checkbox" id="lmin" ${laneFilter.min ? 'checked' : ''}> min. ${MIN_GAMES} games data</label>` : ''}
     <span class="mute" id="lcount"></span>
   </div>
   <div class="panel" style="padding:10px 14px"><span class="mute">“Primair” = standaardlane, “Flex” = ook speelbaar. ${S.stats ? `Win rates en tiers komen uit <b>${S.stats.meta.matches} echte Emerald+ matches</b> (patch ${esc(S.stats.meta.mainPatch || '?')}, ${esc(S.stats.meta.platform.toUpperCase())}). Een tier telt pas vanaf ${MIN_GAMES} games; kleine steekproeven geven ruis.` : 'Geen matchdata gevonden: dit is lane-fit op basis van champion-ontwerp. Draai <code>node collect.js</code> voor echte win rates.'}</span></div>
   <div class="grid" id="lgrid"></div>`;
   $('#lsort').value = laneFilter.sort; $('#ldiff').value = String(laneFilter.diff);
   const update = () => {
-    laneFilter.q = $('#lq').value; laneFilter.sort = $('#lsort').value; laneFilter.diff = +$('#ldiff').value; laneFilter.flex = $('#lflex').checked; laneFilter.role = $('#lrole').value;
+    laneFilter.q = $('#lq').value; laneFilter.sort = $('#lsort').value; laneFilter.diff = +$('#ldiff').value; laneFilter.flex = $('#lflex').checked; laneFilter.min = $('#lmin') ? $('#lmin').checked : false; laneFilter.role = $('#lrole').value;
     let list = lanePool(lane, laneFilter.flex).filter(c => !laneFilter.q || c.name.toLowerCase().includes(laneFilter.q.toLowerCase()));
+    const before = list.length;
+    if (S.stats && laneFilter.min) list = list.filter(c => (statOf(c.id, lane)?.g || 0) >= MIN_GAMES);
+    const hidden = before - list.length;
     if (laneFilter.role) list = list.filter(c => c.tags.includes(laneFilter.role));
     if (laneFilter.diff) list = list.filter(c => c.info.difficulty <= laneFilter.diff);
     const prim = c => lanesOf(c)[0] === lane ? 0 : 1;
@@ -327,9 +331,9 @@ function renderLane(app, [lane = 'TOP']) {
     };
     list.sort(sorters[laneFilter.sort]);
     $('#lgrid').innerHTML = list.map(c => champCard(c, lane, lanesOf(c)[0] === lane ? 'Primair' : 'Flex')).join('') || '<div class="empty">Geen champions gevonden.</div>';
-    $('#lcount').textContent = `${list.length} champions`;
+    $('#lcount').textContent = `${list.length} champions` + (hidden > 0 && laneFilter.min ? ` (${hidden} verborgen: te weinig data)` : '');
   };
-  ['lq', 'lsort', 'ldiff', 'lflex', 'lrole'].forEach(id => $('#' + id).addEventListener('input', update));
+  ['lq', 'lsort', 'ldiff', 'lflex', 'lrole', 'lmin'].forEach(id => $('#' + id)?.addEventListener('input', update));
   update();
 }
 
