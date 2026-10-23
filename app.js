@@ -260,8 +260,28 @@ const itemRow = (arr, sep = false) => `<div class="items">${arr.map((i, idx) => 
 /* ---------- routes ---------- */
 const routes = {
   home: renderHome, lane: renderLane, champions: renderChampions, champ: renderChamp, counter: renderCounter,
-  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats,
+  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers,
 };
+
+/* ---------- Gedeelde helpers (ook in de GitHub Pages-versie) ---------- */
+const QNAME = { 420: 'Ranked Solo', 440: 'Ranked Flex', 400: 'Normal', 430: 'Blind', 450: 'ARAM', 480: 'Swiftplay', 490: 'Quickplay', 1700: 'Arena', 700: 'Clash' };
+const champByNum = n => S.champList.find(c => c.key === String(n));
+const fmtAgo = ts => { const h = (Date.now() - ts) / 36e5; return h < 1 ? 'zojuist' : h < 24 ? Math.round(h) + 'u geleden' : Math.round(h / 24) + 'd geleden'; };
+const avg = (a, f) => a.length ? a.reduce((s, x) => s + f(x), 0) / a.length : 0;
+const k1 = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : Math.round(n);
+
+/* aggregeer een lijst matches tot gemiddelden */
+function aggregate(list) {
+  const mins = m => m.dur / 60;
+  return {
+    g: list.length, w: list.filter(m => m.win).length,
+    kda: list.reduce((s, m) => s + m.k + m.a, 0) / Math.max(1, list.reduce((s, m) => s + m.d, 0)),
+    k: avg(list, m => m.k), d: avg(list, m => m.d), a: avg(list, m => m.a),
+    dmg: avg(list, m => m.dmg), dpm: avg(list, m => m.dmg / mins(m)), taken: avg(list, m => m.taken || 0),
+    cspm: avg(list, m => m.cs / mins(m)), vpm: avg(list, m => (m.vision || 0) / mins(m)), kp: avg(list, m => m.kp || 0) * 100,
+    gold: avg(list, m => (m.gold || 0) / mins(m)), dur: avg(list, mins),
+  };
+}
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
@@ -271,6 +291,65 @@ function route() {
   const app = $('#app');
   try { fn(app, parts.slice(1)); } catch (e) { console.error(e); app.innerHTML = `<div class="panel warn">Er ging iets mis: ${esc(e.message)}</div>`; }
   window.scrollTo(0, 0);
+}
+
+/* ---------- Spelers: vergelijking van vaste accounts (momentopname uit friends.js, gemaakt met snapshot.js) ---------- */
+const playersUi = { queue: 'all' };
+function renderPlayers(app) {
+  const F = window.RC_FRIENDS;
+  if (!F || !F.players?.length) { app.innerHTML = '<h1>👥 Spelers</h1><div class="empty">Nog geen spelersdata. Draai <code>node snapshot.js</code> (met een geldige key in <code>.env</code>).</div>'; return; }
+  const when = new Date(F.generated).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' });
+  const qs = {}; F.players.forEach(p => p.matches.forEach(m => qs[m.queue] = (qs[m.queue] || 0) + 1));
+  const qOpts = [['all', 'Alle queues'], ...Object.entries(qs).sort((a, b) => b[1] - a[1]).map(([q, n]) => [q, `${QNAME[q] || 'Queue ' + q} (${n})`])];
+  if (!qOpts.some(([q]) => q === playersUi.queue)) playersUi.queue = 'all';
+  app.innerHTML = `<h1>👥 Spelers</h1><p class="mute">Vergelijking van ${F.players.length} accounts op basis van hun laatste games. Momentopname van <b>${esc(when)}</b>.</p>
+  <div class="toolbar"><select id="pq">${qOpts.map(([q, l]) => `<option value="${q}" ${q === playersUi.queue ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div><div id="pbody"></div>`;
+  const draw = () => { playersUi.queue = $('#pq').value; $('#pbody').innerHTML = playersHtml(F.players, playersUi.queue); };
+  $('#pq').addEventListener('input', draw); draw();
+}
+
+function playersHtml(players, queue) {
+  const rk = r => r ? `<b>${r.tier} ${r.rank}</b> · ${r.lp} LP <span class="mute">(${r.wins}W ${r.losses}L)</span>` : '<span class="mute">Geen rank</span>';
+  const data = players.map(p => {
+    const M = p.matches.filter(m => queue === 'all' || String(m.queue) === queue), T = aggregate(M);
+    const byC = {}, byL = {};
+    M.forEach(m => { (byC[m.champ] = byC[m.champ] || []).push(m); if (m.lane) (byL[m.lane] = byL[m.lane] || []).push(m); });
+    return { p, M, T, byC, byL, wr: M.length ? 100 * T.w / T.g : 0 };
+  });
+  const METRICS = [['Games', d => d.T.g, v => v, 1], ['Win rate', d => d.wr, v => v.toFixed(0) + '%', 1], ['KDA', d => d.T.kda, v => v.toFixed(2), 1], ['Deaths per game', d => d.T.d, v => v.toFixed(1), -1],
+    ['Schade per minuut', d => d.T.dpm, v => Math.round(v), 1], ['Schade per game', d => d.T.dmg, v => k1(v), 1], ['Schade genomen / game', d => d.T.taken, v => k1(v), 0],
+    ['CS per minuut', d => d.T.cspm, v => v.toFixed(1), 1], ['Vision per minuut', d => d.T.vpm, v => v.toFixed(2), 1], ['Kill participation', d => d.T.kp, v => v.toFixed(0) + '%', 1], ['Goud per minuut', d => d.T.gold, v => Math.round(v), 1]];
+  const best = {};
+  METRICS.forEach(([l, f, , dir]) => { if (!dir) return; const vals = data.filter(d => d.M.length >= 3).map(d => f(d) * dir); if (vals.length > 1) { const m = Math.max(...vals); best[l] = data.findIndex(d => d.M.length >= 3 && f(d) * dir === m); } });
+  const card = d => {
+    const { p, M, T } = d, form = [...M].slice(0, 20).reverse().map(m => `<i title="${esc(m.champ)} ${m.k}/${m.d}/${m.a} – ${m.win ? 'Win' : 'Loss'}" style="display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:2px;background:${m.win ? 'var(--green)' : 'var(--red)'}"></i>`).join('');
+    const solo = p.ranks.find(r => r.queue === 'RANKED_SOLO_5x5'), flex = p.ranks.find(r => r.queue === 'RANKED_FLEX_SR');
+    const top = Object.entries(d.byC).sort((a, b) => b[1].length - a[1].length).slice(0, 5);
+    const mainLane = Object.entries(d.byL).sort((a, b) => b[1].length - a[1].length)[0];
+    return `<div class="panel"><div class="row"><img src="${CDN}/cdn/${S.ver}/img/profileicon/${p.summoner.icon}.png" width="56" height="56" style="border-radius:12px;border:2px solid var(--gold)" onerror="this.style.display='none'">
+      <div><h2 style="margin:0">${esc(p.account.name)}<span class="mute">#${esc(p.account.tag)}</span></h2><span class="chip">Level ${p.summoner.level || '?'}</span> ${mainLane ? `<span class="chip gold">${LANES[mainLane[0]].icon} ${LANES[mainLane[0]].label}</span>` : ''}</div></div>
+      <div class="tag-title">Solo/Duo</div>${rk(solo)}<div class="tag-title">Flex</div>${rk(flex)}
+      <div class="tag-title">Vorm (laatste ${Math.min(20, M.length)}, oud → nieuw)</div>${form || '<span class="mute">–</span>'}
+      <div class="tag-title">Meest gespeeld</div>${top.map(([id, l]) => { const c = S.champs[id] || champByNum(l[0].champId), a = aggregate(l);
+        return `<div class="row" style="justify-content:space-between;padding:2px 0"><span>${c ? `<a href="#/champ/${c.id}/${l[0].lane || lanesOf(c)[0]}"><img src="${portrait(c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(c.name)}</a>` : esc(id)}</span><span class="mute" style="font-size:.8rem">${a.g}× · ${(100 * a.w / a.g).toFixed(0)}% · ${a.kda.toFixed(1)} KDA · ${k1(a.dmg)}</span></div>`; }).join('') || '<span class="mute">–</span>'}
+      <div class="tag-title">Top mastery</div><div class="mu">${p.mastery.slice(0, 4).map(m => { const c = champByNum(m.champId); return c ? `<a href="#/champ/${c.id}/${lanesOf(c)[0]}"><img src="${portrait(c)}">${esc(c.name)} · ${(m.points / 1000).toFixed(0)}k</a>` : ''; }).join('')}</div></div>`;
+  };
+  /* gedeelde champions */
+  const shared = {}; data.forEach((d, i) => Object.entries(d.byC).forEach(([id, l]) => { (shared[id] = shared[id] || {})[i] = aggregate(l); }));
+  const sharedRows = Object.entries(shared).filter(([, o]) => Object.keys(o).length >= 2).sort((a, b) => Object.keys(b[1]).length - Object.keys(a[1]).length || Object.values(b[1]).reduce((s, x) => s + x.g, 0) - Object.values(a[1]).reduce((s, x) => s + x.g, 0)).slice(0, 8);
+  /* conclusies */
+  const facts = [];
+  const lead = (label, f, dir = 1, min = 3, fmt = v => v.toFixed(1)) => { const c = data.filter(d => d.M.length >= min); if (c.length < 2) return; const b = c.reduce((x, y) => (f(y) * dir > f(x) * dir ? y : x)); facts.push(`<b>${label}:</b> ${esc(b.p.account.name)} (${fmt(f(b))})`); };
+  lead('Hoogste win rate', d => d.wr, 1, 5, v => v.toFixed(0) + '%'); lead('Meeste schade per minuut', d => d.T.dpm, 1, 3, v => Math.round(v)); lead('Beste KDA', d => d.T.kda, 1, 3, v => v.toFixed(2));
+  lead('Beste farm (CS/min)', d => d.T.cspm, 1, 3); lead('Meeste visie per minuut', d => d.T.vpm, 1, 3, v => v.toFixed(2)); lead('Minste deaths', d => d.T.d, -1, 3, v => v.toFixed(1) + ' per game'); lead('Hoogste kill participation', d => d.T.kp, 1, 3, v => v.toFixed(0) + '%');
+
+  return `<div class="players">${data.map(card).join('')}</div>
+  <div class="panel"><h2>Vergelijking</h2><div style="overflow:auto"><table class="tbl"><thead><tr><th>Statistiek</th>${data.map(d => `<th>${esc(d.p.account.name)}</th>`).join('')}</tr></thead><tbody>
+  ${METRICS.map(([l, f, fmt]) => `<tr><td>${l}</td>${data.map((d, i) => `<td${best[l] === i ? ' style="color:var(--green);font-weight:700"' : ''}>${d.M.length ? fmt(f(d)) : '–'}${best[l] === i ? ' 👑' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <p class="mute" style="font-size:.78rem">👑 = beste van de groep (alleen bij minstens 3 games; bij deaths telt laag als beter). Schade genomen is niet beoordeeld, omdat tanks dat bewust incasseren.</p></div>
+  ${facts.length ? `<div class="panel"><h2>🧠 Wie is waar het beste in?</h2><ul class="list">${facts.map(f => `<li>${f}</li>`).join('')}</ul></div>` : ''}
+  ${sharedRows.length ? `<div class="panel"><h2>Gedeelde champions</h2><div style="overflow:auto"><table class="tbl"><thead><tr><th>Champion</th>${data.map(d => `<th>${esc(d.p.account.name)}</th>`).join('')}</tr></thead><tbody>${sharedRows.map(([id, o]) => { const c = S.champs[id];
+    return `<tr><td>${c ? `<a href="#/champ/${c.id}/${lanesOf(c)[0]}"><img src="${portrait(c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(c.name)}</a>` : esc(id)}</td>${data.map((d, i) => o[i] ? `<td>${o[i].g}× · ${(100 * o[i].w / o[i].g).toFixed(0)}% WR · ${o[i].kda.toFixed(1)} KDA</td>` : '<td class="mute">–</td>').join('')}</tr>`; }).join('')}</tbody></table></div></div>` : ''}`;
 }
 
 /* ---------- Home ---------- */

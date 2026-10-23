@@ -165,3 +165,5 @@ details summary{cursor:pointer;list-style:none}
 .sug .up{color:var(--green);font-size:.78rem}.sug .down{color:var(--red);font-size:.78rem}
 .sug .why{font-size:.72rem;color:var(--green)}
 .sug .pills{margin-top:2px}
+
+.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}
