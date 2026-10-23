@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rift Companion – LoL Champion, Rune & Item Gids</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/"><span class="logo">◈</span> Rift<span>Companion</span></a>
+  <nav id="nav">
+    <a href="#/" data-r="home">Home</a>
+    <a href="#/lane/TOP" data-r="lane">Lanes</a>
+    <a href="#/champions" data-r="champions">Champions</a>
+    <a href="#/counter" data-r="counter">Counter picker</a>
+    <a href="#/team" data-r="team">Team builder</a>
+    <a href="#/items" data-r="items">Items</a>
+    <a href="#/runes" data-r="runes">Runes</a>
+    <a href="#/favs" data-r="favs">★ Favorieten</a>
+  </nav>
+  <div class="search">
+    <input id="gsearch" type="search" placeholder="Zoek champion…  ( / )" autocomplete="off">
+    <div id="gresults" class="gresults" hidden></div>
+  </div>
+  <span id="verBadge" class="ver">laden…</span>
+</header>
+
+<main id="app"><div class="loading"><div class="spinner"></div><p>Data van Riot laden…</p></div></main>
+
+<div id="modal" class="modal" hidden><div class="modal-card"><button class="close" id="modalClose" aria-label="Sluiten">×</button><div id="modalBody"></div></div></div>
+<div id="toast" class="toast" hidden></div>
+<footer class="foot">Rift Companion is niet verbonden met Riot Games. Data via Riot Data Dragon. Aanbevelingen zijn indicatief en geen live win rates.</footer>
+
+<script src="data.js"></script>
+<script src="stats.js" onerror="void 0"></script>
+<script src="app.js"></script>
+</body>
+</html>
