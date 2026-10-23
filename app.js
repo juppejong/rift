@@ -294,7 +294,7 @@ function route() {
 }
 
 /* ---------- Spelers: vergelijking van vaste accounts (momentopname uit friends.js, gemaakt met snapshot.js) ---------- */
-const playersUi = { queue: 'all' };
+const playersUi = { queue: 'all', n: 0 };
 function renderPlayers(app) {
   const F = window.RC_FRIENDS;
   if (!F || !F.players?.length) { app.innerHTML = '<h1>👥 Spelers</h1><div class="empty">Nog geen spelersdata. Draai <code>node snapshot.js</code> (met een geldige key in <code>.env</code>).</div>'; return; }
@@ -303,15 +303,19 @@ function renderPlayers(app) {
   const qOpts = [['all', 'Alle queues'], ...Object.entries(qs).sort((a, b) => b[1] - a[1]).map(([q, n]) => [q, `${QNAME[q] || 'Queue ' + q} (${n})`])];
   if (!qOpts.some(([q]) => q === playersUi.queue)) playersUi.queue = 'all';
   app.innerHTML = `<h1>👥 Spelers</h1><p class="mute">Vergelijking van ${F.players.length} accounts op basis van hun laatste games. Momentopname van <b>${esc(when)}</b>.</p>
-  <div class="toolbar"><select id="pq">${qOpts.map(([q, l]) => `<option value="${q}" ${q === playersUi.queue ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div><div id="pbody"></div>`;
-  const draw = () => { playersUi.queue = $('#pq').value; $('#pbody').innerHTML = playersHtml(F.players, playersUi.queue); };
-  $('#pq').addEventListener('input', draw); draw();
+  <div class="toolbar"><select id="pq">${qOpts.map(([q, l]) => `<option value="${q}" ${q === playersUi.queue ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+  <select id="pn">${[[0, 'Alle games'], [20, 'Laatste 20 games'], [30, 'Laatste 30 games'], [50, 'Laatste 50 games'], [75, 'Laatste 75 games']].map(([n, l]) => `<option value="${n}" ${n === playersUi.n ? 'selected' : ''}>${l}</option>`).join('')}</select>
+  <span class="mute">het aantal geldt per speler, na het queue-filter</span></div><div id="pbody"></div>`;
+  const draw = () => { playersUi.queue = $('#pq').value; playersUi.n = +$('#pn').value; $('#pbody').innerHTML = playersHtml(F.players, playersUi.queue, playersUi.n); };
+  $('#pq').addEventListener('input', draw); $('#pn').addEventListener('input', draw); draw();
 }
 
-function playersHtml(players, queue) {
+function playersHtml(players, queue, limit = 0) {
   const rk = r => r ? `<b>${r.tier} ${r.rank}</b> · ${r.lp} LP <span class="mute">(${r.wins}W ${r.losses}L)</span>` : '<span class="mute">Geen rank</span>';
   const data = players.map(p => {
-    const M = p.matches.filter(m => queue === 'all' || String(m.queue) === queue), T = aggregate(M);
+    let M = p.matches.filter(m => queue === 'all' || String(m.queue) === queue);
+    if (limit > 0) M = M.slice(0, limit); // matches staan van nieuw naar oud
+    const T = aggregate(M);
     const byC = {}, byL = {};
     M.forEach(m => { (byC[m.champ] = byC[m.champ] || []).push(m); if (m.lane) (byL[m.lane] = byL[m.lane] || []).push(m); });
     return { p, M, T, byC, byL, wr: M.length ? 100 * T.w / T.g : 0 };
