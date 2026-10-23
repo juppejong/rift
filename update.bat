@@ -1,7 +1,7 @@
 @echo off
-REM Kopieert de nieuwste stats.js uit de app-map en pusht alles naar GitHub (live in ~1 minuut).
+REM Bouwt de site opnieuw op vanuit de app-map (incl. vertalingen en stats.js) en pusht alles naar GitHub.
 cd /d "%~dp0"
-if exist "..\lol-companion\stats.js" copy /Y "..\lol-companion\stats.js" "stats.js" >nul
+if exist "..\lol-companion\make-pages.js" node "..\lol-companion\make-pages.js"
 git add -A
 git diff --cached --quiet && (echo Geen wijzigingen om te pushen. & exit /b 0)
 git commit -m "Update %date% %time%"

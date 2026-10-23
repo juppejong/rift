@@ -11,6 +11,11 @@ const plain = s => (s || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(li|p|sta
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
   .replace(/\n{3,}/g, '\n\n').trim();
 
+/* Nederlandse vertaling (nl.js, gemaakt met build-nl.js). Valt terug op Engels als de brontekst is gewijzigd. */
+const fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36); };
+const tr = (key, en) => { const e = window.RC_NL?.t?.[key]; return e && en && e[0] === fnv(en) ? e[1] : en; };
+const TAG_NL = { Mage: 'Mage', Assassin: 'Assassin', Tank: 'Tank', Fighter: 'Vechter', Marksman: 'Schutter', Support: 'Support' };
+
 const S = { ver: '', champs: {}, champList: [], items: {}, runes: [], spells: {}, full: {}, favs: [], ui: { setup: 0, spell: 0, fav: false } };
 const laneFilter = { q: '', sort: 'fit', diff: 0, flex: true, role: '' };
 
@@ -378,7 +383,7 @@ async function renderChamp(app, [id, lane]) {
   <div class="champ-hero"><div class="bg" id="chBg" style="background-image:url('${splash(c.id, 0)}')"></div>
     <div class="in"><img class="ic" src="${portrait(c)}" alt="">
       <div style="flex:1"><h1>${esc(c.name)}</h1><div class="sub">${esc(c.title)}</div>
-      <div class="pills">${c.tags.map(t => `<span class="chip gold">${t}</span>`).join('')}${lanes.map(l => `<a class="chip" href="#/champ/${c.id}/${l}">${LANES[l].icon} ${LANES[l].label}</a>`).join('')}${diffBar(c.info.difficulty)}</div></div>
+      <div class="pills">${c.tags.map(t => `<span class="chip gold">${TAG_NL[t] || t}</span>`).join('')}${lanes.map(l => `<a class="chip" href="#/champ/${c.id}/${l}">${LANES[l].icon} ${LANES[l].label}</a>`).join('')}${diffBar(c.info.difficulty)}</div></div>
       <div class="row"><button class="btn" data-fav="${c.id}">${isFav(c.id) ? '★ Favoriet' : '☆ Favoriet'}</button></div></div></div>
 
   <div class="tabs">${(lanes.length ? lanes : [lane]).map(l => `<a class="tab ${l === lane ? 'on' : ''}" href="#/champ/${c.id}/${l}">${LANES[l].icon} Build voor ${LANES[l].label}</a>`).join('')}</div>
@@ -419,16 +424,16 @@ async function renderChamp(app, [id, lane]) {
       ${full.spells.map((s, i) => `<div class="skill" title="${esc(s.name)}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><b>${'QWER'[i]}</b></div>`).join('')}</div>
       <p><b>Suggestie max-volgorde:</b> ${prio.join(' › ')} (R altijd op level 6/11/16). Start met de skill die het beste bij je lane past.</p>
       <p class="mute" style="font-size:.8rem">Heuristiek: de skill met de laagste cooldown wordt eerst gemaxt. Controleer op het laatst of je champion-specifieke guides anders aanraden.</p>
-      <div class="cols2">${full.spells.map((s, i) => `<div><b>${'QWER'[i]} – ${esc(s.name)}</b><div class="mute" style="font-size:.85rem">${esc(plain(s.description))}</div><div style="font-size:.78rem" class="mute">CD: ${esc(s.cooldownBurn)} · Kost: ${esc(s.costBurn)}</div></div>`).join('')}</div>` : '<p class="mute">Kon de spelgegevens niet laden.</p>'}</div>
+      <div class="cols2"><div><b>P – ${esc(full.passive.name)}</b><div class="mute" style="font-size:.85rem">${esc(tr(`champ.${c.id}.P`, plain(full.passive.description)))}</div></div>${full.spells.map((s, i) => `<div><b>${'QWER'[i]} – ${esc(s.name)}</b><div class="mute" style="font-size:.85rem">${esc(tr(`champ.${c.id}.${'QWER'[i]}`, plain(s.description)))}</div><div style="font-size:.78rem" class="mute">CD: ${esc(s.cooldownBurn)} · Kost: ${esc(s.costBurn)}</div></div>`).join('')}</div>` : '<p class="mute">Kon de spelgegevens niet laden.</p>'}</div>
 
-    ${full ? `<div class="panel cols2"><div><h3>Speel als ${esc(c.name)}</h3><ul class="list">${(full.allytips || []).map(t => `<li>${esc(t)}</li>`).join('') || '<li class="mute">–</li>'}</ul></div>
-      <div><h3>Speel tegen ${esc(c.name)}</h3><ul class="list">${(full.enemytips || []).map(t => `<li>${esc(t)}</li>`).join('') || '<li class="mute">–</li>'}</ul></div></div>` : ''}
+    ${full ? `<div class="panel cols2"><div><h3>Speel als ${esc(c.name)}</h3><ul class="list">${(full.allytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.a${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div>
+      <div><h3>Speel tegen ${esc(c.name)}</h3><ul class="list">${(full.enemytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.e${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div></div>` : ''}
   </div>
 
   <div>
     <div class="panel"><h3>Summoner spells</h3>
       <div class="setup-tabs">${B.spells.map((p, i) => `<button class="tab ${p === spellSet ? 'on' : ''}" data-spell="${i}">${p.map(s => esc(s.name)).join(' + ')}</button>`).join('')}</div>
-      <div class="spellset">${spellSet.map(s => `<div class="spell" title="${esc(s.name)}: ${esc(plain(s.description))}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><span>${esc(s.name)}</span></div>`).join('')}</div></div>
+      <div class="spellset">${spellSet.map(s => `<div class="spell" title="${esc(s.name)}: ${esc(tr('spell.' + s.key, plain(s.description)))}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><span>${esc(s.name)}</span></div>`).join('')}</div></div>
 
     <div class="panel"><h3>Stats</h3>
       ${[['Aanval', c.info.attack], ['Defense', c.info.defense], ['Magie', c.info.magic], ['Moeilijkheid', c.info.difficulty]].map(([n, v]) => `<div class="row" style="justify-content:space-between"><span>${n}</span>${diffBar(v)}</div>`).join('')}
@@ -564,7 +569,7 @@ function renderItems(app) {
     else if (itemFilter.tier === 'boots') l = sr.filter(i => (i.tags || []).includes('Boots'));
     else if (itemFilter.tier === 'basic') l = sr.filter(i => !done(i) && (i.gold.total || 0) > 450 && !(i.tags || []).includes('Boots'));
     else if (itemFilter.tier === 'starter') l = sr.filter(i => (i.gold.total || 0) <= 500 || (i.tags || []).some(t => ['Consumable', 'Trinket'].includes(t)));
-    if (itemFilter.q) l = l.filter(i => i.name.toLowerCase().includes(itemFilter.q.toLowerCase()) || (i.plaintext || '').toLowerCase().includes(itemFilter.q.toLowerCase()));
+    if (itemFilter.q) l = l.filter(i => i.name.toLowerCase().includes(itemFilter.q.toLowerCase()) || tr('item.' + i.id + '.p', plain(i.plaintext)).toLowerCase().includes(itemFilter.q.toLowerCase()));
     if (itemFilter.tag) l = l.filter(i => (i.tags || []).includes(itemFilter.tag));
     l = [...l].sort((a, b) => (b.gold.total || 0) - (a.gold.total || 0));
     $('#ig').innerHTML = l.map(i => `<div class="it" style="width:auto" data-item="${i.id}" title="${esc(i.name)}"><img src="${itemImg(i)}" loading="lazy" alt=""><small>${esc(i.name)}<br>${i.gold.total}g</small></div>`).join('');
@@ -577,21 +582,21 @@ function itemModal(id) {
   const from = (i.from || []).map(x => S.items[x]).filter(Boolean), into = (i.into || []).map(x => S.items[x]).filter(i2 => i2 && i2.maps?.['11']);
   const stats = Object.entries(i.stats || {}).map(([k, v]) => `${STAT_LABELS[k] || k}: ${v < 1 && v > 0 ? Math.round(v * 100) + '%' : v}`);
   openModal(`<div class="row"><img src="${itemImg(i)}" width="64" height="64" style="border-radius:10px;border:2px solid var(--gold)"><div><h2 style="margin:0">${esc(i.name)}</h2><span class="chip gold">${i.gold.total}g</span> <span class="chip">Verkoopwaarde ${i.gold.sell}g</span></div></div>
-  <p class="mute">${esc(i.plaintext || '')}</p>${stats.length ? `<div class="pills">${stats.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
-  <pre class="pre" style="margin-top:12px">${esc(plain(i.description))}</pre>
+  <p class="mute">${esc(tr('item.' + i.id + '.p', plain(i.plaintext)))}</p>${stats.length ? `<div class="pills">${stats.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+  <pre class="pre" style="margin-top:12px">${esc(tr('item.' + i.id + '.d', plain(i.description)))}</pre>
   ${from.length ? `<div class="tag-title">Bestaat uit</div>${itemRow(from)}` : ''}${into.length ? `<div class="tag-title">Wordt</div>${itemRow(into)}` : ''}
-  <div class="tag-title">Tags</div><div class="pills">${(i.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>`);
+  <div class="tag-title">Tags</div><div class="pills">${(i.tags || []).map(t => `<span class="chip">${esc(ITEM_FILTERS.find(f => f[0] === t)?.[1] || t)}</span>`).join('')}</div>`);
 }
 
 /* ---------- Rune browser ---------- */
 function renderRunes(app) {
   app.innerHTML = `<h1>Runes</h1><p class="mute">Alle runes van de huidige patch. Klik voor details.</p>` + S.runes.map(t => `
   <div class="rt-tree"><div class="row"><img src="${runeImg(t)}" width="40" height="40"><h3 style="margin:0">${esc(t.name)}</h3></div>
-  ${t.slots.map((s, si) => `<div class="rt-row">${s.runes.map(r => `<div class="rt-r" data-rune="${r.id}"><img src="${runeImg(r)}" alt="" loading="lazy"><div><b>${esc(r.name)}${si === 0 ? ' ★' : ''}</b><small>${esc(plain(r.shortDesc).slice(0, 140))}</small></div></div>`).join('')}</div>`).join('')}</div>`).join('');
+  ${t.slots.map((s, si) => `<div class="rt-row">${s.runes.map(r => `<div class="rt-r" data-rune="${r.id}"><img src="${runeImg(r)}" alt="" loading="lazy"><div><b>${esc(r.name)}${si === 0 ? ' ★' : ''}</b><small>${esc(tr('rune.' + r.id + '.s', plain(r.shortDesc)).slice(0, 140))}</small></div></div>`).join('')}</div>`).join('')}</div>`).join('');
 }
 function runeModal(id) {
   for (const t of S.runes) for (const s of t.slots) for (const r of s.runes) if (String(r.id) === String(id)) {
-    openModal(`<div class="row"><img src="${runeImg(r)}" width="64" height="64"><div><h2 style="margin:0">${esc(r.name)}</h2><span class="chip gold">${esc(t.name)}</span></div></div><pre class="pre" style="margin-top:12px">${esc(plain(r.longDesc))}</pre>`); return;
+    openModal(`<div class="row"><img src="${runeImg(r)}" width="64" height="64"><div><h2 style="margin:0">${esc(r.name)}</h2><span class="chip gold">${esc(t.name)}</span></div></div><pre class="pre" style="margin-top:12px">${esc(tr('rune.' + r.id + '.l', plain(r.longDesc)))}</pre>`); return;
   }
 }
 
