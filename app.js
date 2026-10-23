@@ -193,7 +193,7 @@ function dataPanel(c, lane) {
   const its = topBy(bigItems, 8).map(([id, a]) => { const i = S.items[id]; return i ? `<div class="it" data-item="${id}" title="${a[0]}× · ${pct(a)}"><img src="${itemImg(i)}" alt=""><small>${esc(i.name)}<br>${a[0]}× · ${pct(a)}</small></div>` : ''; }).join('');
   const sps = topBy(st.c.spells, 3).map(([k, a]) => `<span class="chip gold">${k.split(',').map(x => spellById(x)?.name || x).join(' + ')} · ${a[0]}× · ${pct(a)}</span>`).join(' ');
   return `<div class="panel"><h2>📊 Echte matchdata ${st.tier ? `<span class="tier-label t-${st.tier}">${st.tier}</span>` : ''}</h2>
-    <div class="pills"><span class="chip gold">${st.g} games</span><span class="chip">${st.wr.toFixed(1)}% win rate</span><span class="chip">${st.pr.toFixed(1)}% pick rate</span></div>
+    <div class="pills"><span class="chip gold">${st.g} games</span><span class="chip">${st.wr.toFixed(1)}% win rate</span><span class="chip">${st.pr.toFixed(1)}% pick rate</span>${(() => { const d = dmgData(c.id, lane); return d ? `<span class="chip ad">⚔ ${Math.round(d.min)} schade/min (${k0(d.game)} per game)</span><span class="chip">🛡 ${Math.round(d.takenMin)} genomen/min</span>` : ''; })()}</div>
     <p class="mute" style="font-size:.8rem">Emerald+ ${esc(S.stats.meta.platform.toUpperCase())}, patch ${esc(S.stats.meta.mainPatch || '?')}, ${S.stats.meta.matches} matches. Kleine steekproef = ruis${st.g < MIN_GAMES ? ' (te weinig games voor een tier)' : ''}.</p>
     <div class="tag-title">Meest gebruikte keystones</div>${ks || '–'}
     <div class="tag-title">Meest gekochte items (eindbuild)</div><div class="items">${its || '–'}</div>
@@ -248,7 +248,7 @@ function champCard(c, lane, fit) {
     <button class="fav ${isFav(c.id) ? 'on' : ''}" data-fav="${c.id}" aria-label="Favoriet">★</button>
     <div class="portrait" style="background-image:url('${loading(c.id)}')"></div>
     <div class="body"><span class="nm">${esc(c.name)}</span><span class="mute" style="font-size:.78rem">${esc(c.title)}</span>
-    <div class="ct">${dmgChip(A)}<span class="chip">${esc(A.label.split('(')[0].trim())}</span></div>${statLine}${diffBar(c.info.difficulty)}</div></a>`;
+    <div class="ct">${dmgChip(A)}<span class="chip">${esc(A.label.split('(')[0].trim())}</span></div>${statLine}${lane ? `<div class="ct">${badges(c, lane)}</div>` : ''}${diffBar(c.info.difficulty)}</div></a>`;
 }
 
 function itemTile(i, label) {
@@ -260,7 +260,7 @@ const itemRow = (arr, sep = false) => `<div class="items">${arr.map((i, idx) => 
 /* ---------- routes ---------- */
 const routes = {
   home: renderHome, lane: renderLane, champions: renderChampions, champ: renderChamp, counter: renderCounter,
-  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs,
+  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats,
 };
 
 function route() {
@@ -303,7 +303,7 @@ function renderLane(app, [lane = 'TOP']) {
   <div class="tabs">${Object.entries(LANES).map(([k, l]) => `<a class="tab ${k === lane ? 'on' : ''}" href="#/lane/${k}">${l.icon} ${l.label}</a>`).join('')}</div>
   <div class="toolbar">
     <input id="lq" placeholder="Filter op naam…" value="${esc(laneFilter.q)}">
-    <select id="lsort"><option value="fit">Sorteer: Lane-fit</option>${S.stats ? '<option value="tier">Tier (data)</option><option value="wr">Win rate</option><option value="pr">Pick rate</option>' : ''}<option value="az">A – Z</option><option value="easy">Makkelijkst eerst</option><option value="hard">Moeilijkst eerst</option><option value="attack">Meeste aanval</option><option value="defense">Meeste defense</option><option value="magic">Meeste magie</option></select>
+    <select id="lsort"><option value="fit">Sorteer: Lane-fit</option><option value="hp">Meeste health (lvl 18)</option><option value="hplow">Minste health (lvl 18)</option><option value="dpm">Meeste schade</option>${S.stats ? '<option value="tier">Tier (data)</option><option value="wr">Win rate</option><option value="pr">Pick rate</option>' : ''}<option value="az">A – Z</option><option value="easy">Makkelijkst eerst</option><option value="hard">Moeilijkst eerst</option><option value="attack">Meeste aanval</option><option value="defense">Meeste defense</option><option value="magic">Meeste magie</option></select>
     <select id="lrole"><option value="">Alle rollen</option>${roles.map(r => `<option ${laneFilter.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>
     <select id="ldiff"><option value="0">Elke moeilijkheid</option><option value="4">Makkelijk (≤4)</option><option value="7">Gemiddeld (≤7)</option><option value="10">Moeilijk (alles)</option></select>
     <label class="mute"><input type="checkbox" id="lflex" ${laneFilter.flex ? 'checked' : ''}> toon flex-picks</label>
@@ -327,6 +327,8 @@ function renderLane(app, [lane = 'TOP']) {
       easy: (a, b) => a.info.difficulty - b.info.difficulty || a.name.localeCompare(b.name), hard: (a, b) => b.info.difficulty - a.info.difficulty || a.name.localeCompare(b.name),
       tier: (a, b) => (statOf(b.id, lane) ? wilson(statOf(b.id, lane).c.w, statOf(b.id, lane).g) : -1) - (statOf(a.id, lane) ? wilson(statOf(a.id, lane).c.w, statOf(a.id, lane).g) : -1),
       wr: (a, b) => (statOf(b.id, lane)?.wr ?? -1) - (statOf(a.id, lane)?.wr ?? -1), pr: (a, b) => (statOf(b.id, lane)?.g ?? -1) - (statOf(a.id, lane)?.g ?? -1),
+      hp: (a, b) => hpStats(b).hp - hpStats(a).hp, hplow: (a, b) => hpStats(a).hp - hpStats(b).hp,
+      dpm: (a, b) => (dmgData(b.id, lane)?.min ?? -1) - (dmgData(a.id, lane)?.min ?? -1) || dmgRating(b, lane) - dmgRating(a, lane) || hpStats(a).hp - hpStats(b).hp,
       attack: (a, b) => b.info.attack - a.info.attack, defense: (a, b) => b.info.defense - a.info.defense, magic: (a, b) => b.info.magic - a.info.magic,
     };
     list.sort(sorters[laneFilter.sort]);
@@ -441,7 +443,8 @@ async function renderChamp(app, [id, lane]) {
 
     <div class="panel"><h3>Stats</h3>
       ${[['Aanval', c.info.attack], ['Defense', c.info.defense], ['Magie', c.info.magic], ['Moeilijkheid', c.info.difficulty]].map(([n, v]) => `<div class="row" style="justify-content:space-between"><span>${n}</span>${diffBar(v)}</div>`).join('')}
-      <hr style="border-color:var(--line)"><div class="mute" style="font-size:.85rem">HP ${c.stats.hp} (+${c.stats.hpperlevel}) · Armor ${c.stats.armor} · MR ${c.stats.spellblock}<br>AD ${c.stats.attackdamage} · Bereik ${c.stats.attackrange} · MS ${c.stats.movespeed}</div></div>
+      <hr style="border-color:var(--line)"><div class="mute" style="font-size:.85rem">HP ${c.stats.hp} (+${c.stats.hpperlevel}) · Armor ${c.stats.armor} · MR ${c.stats.spellblock}<br>AD ${c.stats.attackdamage} · Bereik ${c.stats.attackrange} · MS ${c.stats.movespeed}</div>
+      <div class="tag-title">Op level 18</div><div class="mute" style="font-size:.85rem">HP ${Math.round(hpStats(c).hp)} · Armor ${Math.round(hpStats(c).ar)} · MR ${Math.round(hpStats(c).mr)} · AD ${Math.round(hpStats(c).ad)}<br>Health-rating ${dots(hpRating(c))} · Schade-rating ${dots(dmgRating(c, lane))}</div></div>
 
     <div class="panel"><h3>Laning-tips</h3><ul class="list">${A.laning.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
 
@@ -505,36 +508,123 @@ function findChampByName(n) {
   const k = nk(n); return S.champList.find(c => nk(c.name) === k || nk(c.id) === k);
 }
 
+/* ---------- Basisstats, schade & health ---------- */
+const hpStats = c => { const s = c.stats, L = 17; return { hp1: s.hp, hp: s.hp + s.hpperlevel * L, ar: s.armor + s.armorperlevel * L, mr: s.spellblock + s.spellblockperlevel * L, ad: s.attackdamage + s.attackdamageperlevel * L, rng: s.attackrange, ms: s.movespeed }; };
+let hpRank = null;
+function hpRating(c) {
+  if (!hpRank) hpRank = S.champList.map(x => hpStats(x).hp).sort((a, b) => a - b);
+  const h = hpStats(c).hp; return Math.min(5, Math.max(1, Math.ceil(hpRank.filter(x => x <= h).length / hpRank.length * 5)));
+}
+const DMG_RATING = { marksman: 5, mage: 5, apAssassin: 5, adAssassin: 5, critSkirmisher: 5, fighter: 4, apFighter: 4, mageSupport: 3, tank: 2, engage: 2, enchanter: 1 };
+const dmgRating = (c, lane) => DMG_RATING[archFor(c, lane)] || 3;
+const dots = n => '●'.repeat(n) + '○'.repeat(5 - n);
+const k0 = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n));
+/* echte schadecijfers uit de steekproef (alleen beschikbaar voor matches die met de nieuwe collect.js zijn opgehaald) */
+function dmgData(id, lane) {
+  const c = S.stats?.lanes?.[lane]?.champs?.[id]; if (!c || !c.dn || !c.min) return null;
+  return { n: c.dn, game: c.dmg / c.dn, min: c.dmg / c.min, takenGame: c.taken / c.dn, takenMin: c.taken / c.min };
+}
+const badges = (c, lane) => {
+  const h = hpStats(c), d = dmgData(c.id, lane);
+  return `<span class="chip" title="Health op level 18">❤ ${k0(h.hp)}</span><span class="chip ${d ? 'ad' : ''}" title="${d ? `Gemiddelde schade aan champions: ${Math.round(d.min)} per minuut (${d.n} games)` : 'Schade-inschatting op basis van klasse (nog geen matchdata)'}">${d ? '⚔ ' + Math.round(d.min) + '/min' : '⚔ ' + dots(dmgRating(c, lane))}</span>`;
+};
+
 /* ---------- Team builder ---------- */
 const teamState = { TOP: '', JUNGLE: '', MID: '', ADC: '', SUPPORT: '' };
-function renderTeam(app) {
-  app.innerHTML = `<h1>Team builder</h1><p class="mute">Vul je (verwachte) team in en krijg een analyse van schadebalans, frontline, engage en win-conditie.</p>
-  <datalist id="champNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
-  <div class="pickrow">${Object.entries(LANES).map(([k, l]) => { const c = findChampByName(teamState[k]); return `<div class="slot"><h4>${l.icon} ${l.label}</h4>${c ? `<img src="${portrait(c)}">` : ''}<input class="field" list="champNames" data-slot="${k}" placeholder="Champion…" value="${esc(c ? c.name : teamState[k])}" style="width:100%"></div>`; }).join('')}</div>
-  <div class="row" style="margin:12px 0"><button class="btn" id="tClear">Leegmaken</button></div><div id="tres"></div>`;
-  $$('[data-slot]').forEach(inp => inp.addEventListener('change', () => { teamState[inp.dataset.slot] = inp.value; renderTeam(app); }));
-  $('#tClear').onclick = () => { Object.keys(teamState).forEach(k => teamState[k] = ''); renderTeam(app); };
-  analyseTeam($('#tres'));
-}
-function analyseTeam(out) {
-  const picks = Object.entries(teamState).map(([lane, n]) => ({ lane, c: findChampByName(n) })).filter(p => p.c);
-  if (picks.length < 2) { out.innerHTML = '<div class="empty">Kies minstens 2 champions voor een analyse.</div>'; return; }
+const teamOpts = { min: true };
+const K_SHRINK = 30; // hoe sterk we win rates naar 50% trekken bij weinig games
+const teamPicks = () => Object.entries(teamState).map(([lane, n]) => ({ lane, c: findChampByName(n) })).filter(p => p.c);
+function shrunk(id, lane) { const st = statOf(id, lane); return st ? (st.c.w + K_SHRINK * .5) / (st.c.g + K_SHRINK) : .5; }
+
+function compProfile(picks) {
   const W = { marksman: 1.2, mage: 1.2, mageSupport: .7, apAssassin: 1, adAssassin: 1, fighter: .8, critSkirmisher: 1, apFighter: .8, tank: .3, engage: .3, enchanter: .15 };
-  let wsum = 0, ad = 0; const cls = { marksman: 0, mage: 0, assassin: 0, fighter: 0, tank: 0, enchanter: 0 }; let ranged = 0, tanks = 0, easy = 0;
+  let wsum = 0, ad = 0, hp = 0, ranged = 0, tanks = 0; const cls = { marksman: 0, mage: 0, assassin: 0, fighter: 0, tank: 0, enchanter: 0 };
   picks.forEach(({ lane, c }) => {
     const ak = archFor(c, lane), A = ARCHETYPES[ak], w = W[ak] || .5; wsum += w;
     ad += w * (A.dmg === 'ad' ? 1 : A.dmg === 'ap' ? 0 : c.info.attack / (c.info.attack + c.info.magic + 1));
     cls[ARCH_CLASS[ak]]++; if (c.stats.attackrange >= 450) ranged++; if (['tank', 'engage'].includes(ak)) tanks++;
-    if (c.info.difficulty <= 4) easy++;
+    hp += hpStats(c).hp;
   });
-  const adP = Math.round(100 * ad / wsum), apP = 100 - adP;
-  const msgs = [];
-  const bad = t => msgs.push(`<div class="warn">⚠ ${t}</div>`), good = t => msgs.push(`<div class="ok">✔ ${t}</div>`);
+  const adP = wsum ? Math.round(100 * ad / wsum) : 50;
+  return { adP, apP: 100 - adP, cls, ranged, tanks, hp, n: picks.length };
+}
+
+/* Schatting: gemiddelde (naar 50% getrokken) win rate van de champions in hun lane + kleine correcties voor de samenstelling.
+   Dit is een inschatting, geen voorspelling: echte synergie tussen champions zit er niet in. */
+function estimateTeam(picks) {
+  const P = compProfile(picks), adj = {}, n = picks.length;
+  let base = 0, games = 0;
+  picks.forEach(({ lane, c }) => { base += shrunk(c.id, lane) - .5; const st = statOf(c.id, lane); if (st) games += st.g; });
+  base = n ? base / n * 100 : 0;
+  const set = (k, v, t) => adj[k] = { v, t };
+  if (n >= 2) {
+    const m = Math.max(P.adP, P.apP);
+    set('dmg', m > 85 ? -3 : m > 75 ? -1.5 : m <= 65 ? .5 : 0, m > 75 ? `te veel ${P.adP > P.apP ? 'AD' : 'AP'}` : 'goede AD/AP-balans');
+  }
+  if (n >= 3) set('front', P.cls.tank + P.cls.fighter === 0 ? -1.5 : P.tanks >= 1 ? .5 : 0, P.cls.tank + P.cls.fighter === 0 ? 'geen frontline' : 'geeft frontline');
+  if (n >= 4) set('carry', P.cls.marksman === 0 ? -1 : 0, 'geeft een marksman');
+  if (P.cls.assassin >= 3) set('assn', -1, 'te veel assassins');
+  if (P.cls.marksman && P.cls.enchanter) set('peel', .5, 'marksman + enchanter (peel)');
+  const wr = Math.max(38, Math.min(62, 50 + base + Object.values(adj).reduce((s, a) => s + a.v, 0)));
+  return { wr, base, adj, games, n, P };
+}
+
+function suggestFor(lane, picks) {
+  const base = estimateTeam(picks), taken = new Set(picks.map(p => p.c.id));
+  return lanePool(lane).filter(c => !taken.has(c.id))
+    .filter(c => !S.stats || !teamOpts.min || (statOf(c.id, lane)?.g || 0) >= MIN_GAMES)
+    .map(c => {
+      const e = estimateTeam([...picks, { lane, c }]);
+      const reasons = Object.entries(e.adj).filter(([k, a]) => a.v > (base.adj[k]?.v || 0)).map(([, a]) => a.t);
+      return { c, lane, e, delta: e.wr - base.wr, reasons, st: statOf(c.id, lane) };
+    }).sort((a, b) => b.e.wr - a.e.wr || a.c.info.difficulty - b.c.info.difficulty).slice(0, 8);
+}
+
+function renderTeam(app) {
+  const picks = teamPicks();
+  app.innerHTML = `<h1>Team builder</h1><p class="mute">Vul één of meer champions in. Voor de lege lanes krijg je suggesties; klik op een suggestie om hem in te vullen en direct een win rate-schatting te zien.</p>
+  <datalist id="champNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+  <div class="pickrow">${Object.entries(LANES).map(([k, l]) => { const c = findChampByName(teamState[k]); const h = c && hpStats(c);
+    return `<div class="slot"><h4>${l.icon} ${l.label}${c ? ` <button class="btn" data-clear="${k}" style="padding:0 8px;float:right" title="Leegmaken">×</button>` : ''}</h4>${c ? `<a href="#/champ/${c.id}/${k}"><img src="${portrait(c)}"></a>` : ''}
+      <input class="field" list="champNames" data-slot="${k}" placeholder="Champion…" value="${esc(c ? c.name : teamState[k])}" style="width:100%">
+      ${c ? `<div class="pills" style="margin-top:6px">${badges(c, k)}</div>` : ''}</div>`; }).join('')}</div>
+  <div class="row" style="margin:12px 0"><button class="btn" id="tClear">Alles leegmaken</button>
+   ${S.stats ? `<label class="mute"><input type="checkbox" id="tmin" ${teamOpts.min ? 'checked' : ''}> alleen suggesties met ≥ ${MIN_GAMES} games data</label>` : ''}</div>
+  <div id="tsug"></div><div id="tres"></div>`;
+  $$('[data-slot]').forEach(inp => inp.addEventListener('change', () => { const c = findChampByName(inp.value); teamState[inp.dataset.slot] = c ? c.name : inp.value; renderTeam(app); }));
+  $$('[data-clear]').forEach(b => b.onclick = () => { teamState[b.dataset.clear] = ''; renderTeam(app); });
+  $('#tClear').onclick = () => { Object.keys(teamState).forEach(k => teamState[k] = ''); renderTeam(app); };
+  if ($('#tmin')) $('#tmin').onchange = e => { teamOpts.min = e.target.checked; renderTeam(app); };
+  renderSuggestions($('#tsug'), picks);
+  analyseTeam($('#tres'), picks);
+}
+
+function renderSuggestions(out, picks) {
+  const empty = Object.keys(LANES).filter(l => !teamState[l] || !findChampByName(teamState[l]));
+  if (!picks.length) { out.innerHTML = '<div class="empty">Kies hierboven eerst een champion; dan verschijnen hier suggesties voor de andere lanes.</div>'; return; }
+  if (!empty.length) { out.innerHTML = ''; return; }
+  const cur = estimateTeam(picks);
+  out.innerHTML = `<h2>Suggesties voor de lege lanes</h2><p class="mute">Gerangschikt op de geschatte team win rate als je hem kiest (huidig: <b>${cur.wr.toFixed(1)}%</b>). Klik om in te vullen.</p>` +
+    empty.map(lane => {
+      const s = suggestFor(lane, picks);
+      return `<div class="panel"><h3>${LANES[lane].icon} ${LANES[lane].label}</h3>${s.length ? `<div class="sugrow">${s.map(x => `
+        <button class="sug" data-pick="${lane}|${x.c.id}"><img src="${portrait(x.c)}" alt=""><div class="sb"><b>${esc(x.c.name)}</b>
+          <span class="est">~${x.e.wr.toFixed(1)}% <span class="${x.delta >= 0 ? 'up' : 'down'}">${x.delta >= 0 ? '▲' : '▼'}${Math.abs(x.delta).toFixed(1)}</span></span>
+          <span class="mute" style="font-size:.72rem">${x.st ? `${x.st.wr.toFixed(0)}% WR · ${x.st.g} games` : 'geen data'}</span>
+          <span class="pills">${badges(x.c, lane)}</span>
+          ${x.reasons.length ? `<span class="why">+ ${esc(x.reasons.join(', '))}</span>` : ''}</div></button>`).join('')}</div>` : '<p class="mute">Geen champions met genoeg data in deze lane (zet het vinkje hierboven uit om alles te zien).</p>'}</div>`;
+    }).join('');
+}
+
+function analyseTeam(out, picks) {
+  if (picks.length < 2) { out.innerHTML = picks.length ? '<div class="empty">Kies minstens 2 champions voor een volledige analyse.</div>' : ''; return; }
+  const P = compProfile(picks), E = estimateTeam(picks), { adP, apP, cls } = P;
+  const msgs = [], bad = t => msgs.push(`<div class="warn">⚠ ${t}</div>`), good = t => msgs.push(`<div class="ok">✔ ${t}</div>`);
   if (adP > 75) bad(`Zwaar AD (${adP}%): de vijand kan armor stapelen. Overweeg een AP-damage dealer.`);
   else if (apP > 75) bad(`Zwaar AP (${apP}%): de vijand kan MR stapelen. Overweeg een AD-damage dealer.`);
   else good(`Mooie balans AD/AP (${adP}% / ${apP}%).`);
+  if (picks.length >= 3) { if (cls.tank + cls.fighter === 0) bad('Geen frontline: je team valt snel uiteen in een teamfight.'); else good('Voldoende frontline aanwezig.'); }
   if (picks.length >= 4) {
-    if (cls.tank + cls.fighter === 0) bad('Geen frontline: je team valt snel uiteen in een teamfight.'); else good('Voldoende frontline aanwezig.');
     if (cls.tank === 0) bad('Geen echte engage/CC-tank: moeilijk om fights te starten.');
     if (cls.marksman === 0) bad('Geen marksman: weinig sustained DPS tegen tanks en objectives (Baron/Drakes).');
     if (cls.assassin >= 3) bad('Te veel assassins: vaak weinig front-to-back schade.');
@@ -543,18 +633,63 @@ function analyseTeam(out) {
   }
   let ident = 'Flexibel / mix';
   if (cls.assassin >= 2) ident = 'Dive / Pick-comp – vang carry’s voordat ze kunnen vechten.';
-  else if (tanks >= 2 && cls.marksman) ident = 'Engage / teamfight – start en laat je carry’s schade maken.';
-  else if (cls.mage >= 2 && ranged >= 3) ident = 'Poke / Siege – sloop torens van afstand en eis objectives.';
+  else if (P.tanks >= 2 && cls.marksman) ident = 'Engage / teamfight – start en laat je carry’s schade maken.';
+  else if (cls.mage >= 2 && P.ranged >= 3) ident = 'Poke / Siege – sloop torens van afstand en eis objectives.';
   else if (cls.marksman && cls.enchanter) ident = 'Protect the carry – bescherm je ADC en win door schalen.';
   else if (cls.fighter >= 3) ident = 'Skirmish / split-push – forceer 1v1’s over de hele map.';
-  const sug = [];
-  const need = cls.tank + cls.fighter === 0 ? 'tank' : cls.marksman === 0 ? 'marksman' : (adP > 70 ? 'mage' : apP > 70 ? 'fighter' : '');
-  const sugList = need ? S.champList.filter(c => !picks.some(p => p.c.id === c.id) && ARCH_CLASS[archFor(c, lanesOf(c)[0] || 'MID')] === need).sort((a, b) => a.info.difficulty - b.info.difficulty).slice(0, 8) : [];
-  out.innerHTML = `<div class="cols"><div class="panel"><h2>Analyse</h2>${msgs.join('') || '<p class="mute">Geen opmerkingen.</p>'}<p><b>Teamidentiteit:</b> ${esc(ident)}</p></div>
-  <div class="panel"><h3>Schadeverdeling</h3><div class="bar"><i class="ad" style="width:${adP}%"></i><i class="ap" style="width:${apP}%"></i></div><div class="row" style="justify-content:space-between"><span class="chip ad">AD ${adP}%</span><span class="chip ap">AP ${apP}%</span></div>
-  <div class="tag-title">Samenstelling</div><div class="pills">${Object.entries(cls).filter(([, v]) => v).map(([k, v]) => `<span class="chip gold">${v}× ${k}</span>`).join('')}</div>
-  ${sugList.length ? `<div class="tag-title">Suggesties (${need})</div><div class="mu">${sugList.map(c => `<a href="#/champ/${c.id}"><img src="${portrait(c)}">${esc(c.name)}</a>`).join('')}</div>` : ''}</div></div>`;
+
+  /* tabel met health & schade per champion */
+  const rows = picks.map(({ lane, c }) => { const h = hpStats(c), d = dmgData(c.id, lane), st = statOf(c.id, lane), A = ARCHETYPES[archFor(c, lane)];
+    return `<tr><td><img src="${portrait(c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(c.name)} <span class="mute">${LANES[lane].label}</span></td><td>${esc(A.label.split('(')[0].trim())}</td>
+    <td>${Math.round(h.hp)} <span class="mute">${dots(hpRating(c))}</span></td><td>${Math.round(h.ar)}</td><td>${Math.round(h.mr)}</td><td>${Math.round(h.ad)}</td>
+    <td>${d ? `${Math.round(d.min)}/min <span class="mute">(${d.n}g)</span>` : `<span class="mute">${dots(dmgRating(c, lane))}</span>`}</td><td>${d ? Math.round(d.takenMin) + '/min' : '–'}</td>
+    <td>${st ? `${st.wr.toFixed(0)}% <span class="mute">(${st.g}g)</span>` : '–'}</td></tr>`; }).join('');
+  const totHp = P.hp, avgAr = picks.reduce((s, p) => s + hpStats(p.c).ar, 0) / picks.length, avgMr = picks.reduce((s, p) => s + hpStats(p.c).mr, 0) / picks.length;
+  const withD = picks.map(p => dmgData(p.c.id, p.lane)).filter(Boolean), totDpm = withD.reduce((s, d) => s + d.min, 0);
+  const conf = E.games >= 150 * picks.length ? 'hoog' : E.games >= 40 * picks.length ? 'middel' : 'laag';
+
+  out.innerHTML = `<div class="cols"><div class="panel"><h2>Analyse</h2>${msgs.join('')}<p><b>Teamidentiteit:</b> ${esc(ident)}</p></div>
+  <div class="panel"><h2>📈 Geschatte win rate</h2><div style="font-size:2.2rem;font-family:Georgia,serif;color:var(--gold2)">${E.wr.toFixed(1)}%</div>
+   <div class="pills"><span class="chip">basis uit champion-WR’s: ${(50 + E.base).toFixed(1)}%</span>${Object.values(E.adj).map(a => `<span class="chip ${a.v > 0 ? 'gold' : a.v < 0 ? 'ad' : ''}">${a.v > 0 ? '+' : ''}${a.v.toFixed(1)} ${esc(a.t)}</span>`).join('')}</div>
+   <p class="mute" style="font-size:.8rem;margin-top:8px">Betrouwbaarheid: <b>${conf}</b> (${E.games} games in de steekproef). Dit is een <b>schatting</b>: gemiddelde win rate per champion in zijn lane (naar 50% getrokken bij weinig games) plus kleine correcties voor samenstelling. Echte synergie tussen specifieke champions zit er niet in.</p></div></div>
+  <div class="panel"><h2>Health &amp; schade per champion</h2><div style="overflow:auto"><table class="tbl"><thead><tr><th>Champion</th><th>Klasse</th><th>HP lvl 18</th><th>Armor</th><th>MR</th><th>AD</th><th>Schade</th><th>Schade genomen</th><th>Win rate</th></tr></thead><tbody>${rows}</tbody></table></div>
+   <div class="stats-row" style="margin:12px 0 0"><div class="stat"><b>${k0(totHp)}</b><span>totale health (lvl 18)</span></div><div class="stat"><b>${Math.round(avgAr)} / ${Math.round(avgMr)}</b><span>gem. armor / MR</span></div>
+   ${withD.length ? `<div class="stat"><b>${Math.round(totDpm)}</b><span>schade/min (${withD.length} van ${picks.length} met data)</span></div>` : ''}
+   <div class="stat" style="min-width:220px"><div class="bar"><i class="ad" style="width:${adP}%"></i><i class="ap" style="width:${apP}%"></i></div><span>AD ${adP}% · AP ${apP}%</span></div></div>
+   <p class="mute" style="font-size:.78rem">Schade en schade genomen komen uit je matchdata (alleen voor games die met de nieuwste collect.js zijn opgehaald). Zonder data zie je een inschatting op basis van de klasse (●●●●●).</p></div>`;
 }
+
+/* ---------- Statistiekenpagina: health & schade van alle champions ---------- */
+const statsUi = { lane: '', q: '', sort: 'hp', dir: -1, min: true };
+function renderStats(app, [lane = '']) {
+  statsUi.lane = LANES[lane] ? lane : statsUi.lane;
+  const hasD = S.stats && Object.values(S.stats.lanes).some(L => Object.values(L.champs).some(c => c.dn));
+  app.innerHTML = `<h1>Statistieken</h1><p class="mute">Vergelijk champions op health, defense en schade om te kiezen wat bij je past: veel health = taai, weinig health = kwetsbaar maar vaak meer schade.${hasD ? '' : ' <b>Schade-cijfers uit matchdata</b> verschijnen zodra je nieuwe games ophaalt met <code>refresh.bat</code>.'}</p>
+  <div class="toolbar"><select id="sl"><option value="">Alle lanes</option>${Object.entries(LANES).map(([k, l]) => `<option value="${k}" ${statsUi.lane === k ? 'selected' : ''}>${l.label}</option>`).join('')}</select>
+  <input id="sq" placeholder="Zoek champion…" value="${esc(statsUi.q)}">${S.stats ? `<label class="mute"><input type="checkbox" id="smin" ${statsUi.min ? 'checked' : ''}> min. ${MIN_GAMES} games data</label>` : ''}<span class="mute" id="sc"></span></div>
+  <div style="overflow:auto"><table class="tbl" id="stbl"></table></div>`;
+  const COLS = [['name', 'Champion'], ['lane', 'Lane'], ['cls', 'Klasse'], ['hp', 'HP lvl 18'], ['ar', 'Armor'], ['mr', 'MR'], ['ehp', 'Eff. HP (fys.)'], ['ad', 'AD lvl 18'], ['rng', 'Bereik'], ['ms', 'MS'], ['g', 'Games'], ['wr', 'Win rate'], ['dpm', 'Schade/min'], ['tpm', 'Genomen/min']];
+  const draw = () => {
+    statsUi.lane = $('#sl').value; statsUi.q = $('#sq').value; statsUi.min = $('#smin') ? $('#smin').checked : false;
+    let rows = [];
+    S.champList.filter(c => c.name.toLowerCase().includes(statsUi.q.toLowerCase())).forEach(c => (statsUi.lane ? (lanesOf(c).includes(statsUi.lane) ? [statsUi.lane] : []) : lanesOf(c).slice(0, 1)).forEach(l => {
+      const h = hpStats(c), st = statOf(c.id, l), d = dmgData(c.id, l);
+      rows.push({ c, l, name: c.name, lane: LANES[l].label, cls: ARCHETYPES[archFor(c, l)].label.split('(')[0].trim(), hp: h.hp, ar: h.ar, mr: h.mr, ehp: h.hp * (1 + h.ar / 100), ad: h.ad, rng: h.rng, ms: h.ms, g: st?.g ?? -1, wr: st?.wr ?? -1, dpm: d?.min ?? -1, tpm: d?.takenMin ?? -1 });
+    }));
+    if (S.stats && statsUi.min) rows = rows.filter(r => r.g >= MIN_GAMES);
+    const k = statsUi.sort, dir = statsUi.dir;
+    rows.sort((a, b) => (typeof a[k] === 'string' ? a[k].localeCompare(b[k]) : a[k] - b[k]) * dir || a.name.localeCompare(b.name));
+    const f = v => v < 0 ? '<span class="mute">–</span>' : v;
+    $('#stbl').innerHTML = `<thead><tr>${COLS.map(([key, label]) => `<th data-sort="${key}" style="cursor:pointer">${label}${statsUi.sort === key ? (dir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>
+      <td><a href="#/champ/${r.c.id}/${r.l}"><img src="${portrait(r.c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(r.name)}</a></td><td>${r.lane}</td><td>${esc(r.cls)}</td>
+      <td>${Math.round(r.hp)}</td><td>${Math.round(r.ar)}</td><td>${Math.round(r.mr)}</td><td>${Math.round(r.ehp)}</td><td>${Math.round(r.ad)}</td><td>${r.rng}</td><td>${r.ms}</td>
+      <td>${f(r.g)}</td><td>${r.wr < 0 ? '<span class="mute">–</span>' : r.wr.toFixed(1) + '%'}</td><td>${r.dpm < 0 ? '<span class="mute">–</span>' : Math.round(r.dpm)}</td><td>${r.tpm < 0 ? '<span class="mute">–</span>' : Math.round(r.tpm)}</td></tr>`).join('')}</tbody>`;
+    $('#sc').textContent = `${rows.length} rijen`;
+    $$('#stbl th').forEach(th => th.onclick = () => { const key = th.dataset.sort; if (statsUi.sort === key) statsUi.dir *= -1; else { statsUi.sort = key; statsUi.dir = (key === 'name' || key === 'lane' || key === 'cls') ? 1 : -1; } draw(); });
+  };
+  ['sl', 'sq', 'smin'].forEach(id => $('#' + id)?.addEventListener('input', draw)); draw();
+}
+
 
 /* ---------- Item browser ---------- */
 const itemFilter = { q: '', tag: '', tier: 'done' };
@@ -608,6 +743,8 @@ function runeModal(id) {
 document.addEventListener('click', e => {
   const fav = e.target.closest('[data-fav]');
   if (fav) { e.preventDefault(); e.stopPropagation(); toggleFav(fav.dataset.fav); if (fav.classList.contains('btn')) fav.textContent = isFav(fav.dataset.fav) ? '★ Favoriet' : '☆ Favoriet'; else fav.classList.toggle('on', isFav(fav.dataset.fav)); return; }
+  const pk = e.target.closest('[data-pick]');
+  if (pk) { const [lane, id] = pk.dataset.pick.split('|'); teamState[lane] = S.champs[id].name; renderTeam($('#app')); return; }
   const it = e.target.closest('[data-item]'); if (it) { itemModal(it.dataset.item); return; }
   const ru = e.target.closest('[data-rune]'); if (ru) { runeModal(ru.dataset.rune); return; }
   if (e.target.id === 'modal' || e.target.id === 'modalClose') closeModal();

@@ -155,3 +155,13 @@ main{max-width:1280px;margin:0 auto;padding:22px 20px 60px}
 .tbl td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 .tbl tr:hover td{background:var(--panel2)}
 details summary{cursor:pointer;list-style:none}
+
+.sugrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.sug{display:flex;gap:10px;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px;color:var(--text);cursor:pointer;font:inherit;transition:.15s}
+.sug:hover{border-color:var(--gold);transform:translateY(-2px)}
+.sug img{width:48px;height:48px;border-radius:50%;flex:none}
+.sug .sb{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sug .est{font-weight:600;color:var(--gold2)}
+.sug .up{color:var(--green);font-size:.78rem}.sug .down{color:var(--red);font-size:.78rem}
+.sug .why{font-size:.72rem;color:var(--green)}
+.sug .pills{margin-top:2px}
