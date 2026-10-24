@@ -310,7 +310,7 @@ function renderPlayers(app) {
   $('#pq').addEventListener('input', draw); $('#pn').addEventListener('input', draw); draw();
 }
 
-function playersHtml(players, queue, limit = 0) {
+function playersHtmlBase(players, queue, limit = 0) {
   const rk = r => r ? `<b>${r.tier} ${r.rank}</b> · ${r.lp} LP <span class="mute">(${r.wins}W ${r.losses}L)</span>` : '<span class="mute">Geen rank</span>';
   const data = players.map(p => {
     let M = p.matches.filter(m => queue === 'all' || String(m.queue) === queue);
@@ -428,6 +428,109 @@ function renderAdvice(app) {
   $$('[data-q]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.q.split('|'); quiz[k] = v; const y = window.scrollY; renderAdvice(app); window.scrollTo(0, y); });
   $('#qReset').onclick = () => { Object.keys(quiz).forEach(k => k !== 'min' && (quiz[k] = '')); renderAdvice(app); };
   if ($('#qmin')) $('#qmin').onchange = e => { quiz.min = e.target.checked; const y = window.scrollY; renderAdvice(app); window.scrollTo(0, y); };
+}
+
+/* ---------- Spelers: extra analyses (samen spelen, matchups, speelstijl, eerste 15 minuten) ---------- */
+function playersHtml(players, queue, limit = 0) { return playersHtmlBase(players, queue, limit) + playersExtra(players, queue, limit); }
+
+function playersExtra(players, queue, limit) {
+  const filt = p => { let M = p.matches.filter(m => queue === 'all' || String(m.queue) === queue); return M; };
+  const data = players.map(p => { let M = filt(p); if (limit > 0) M = M.slice(0, limit); return { p, name: p.account.name, M, V: M.filter(m => m.v === 2), L: M.filter(m => m.tl) }; });
+  return togetherHtml(players, filt) + styleHtml(data) + earlyHtml(data) + matchupsHtml(data);
+}
+const pct = (w, g) => g ? Math.round(100 * w / g) + '%' : '–';
+const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+const per = (a, f) => a.length ? sum(a, f) / a.length : 0;
+
+/* 1. samen spelen en tegen elkaar */
+function togetherHtml(players, filt) {
+  const rows = players.map(p => Object.fromEntries(filt(p).filter(m => m.team).map(m => [m.id, m])));
+  const names = players.map(p => p.account.name);
+  const byId = {}; rows.forEach((r, i) => Object.entries(r).forEach(([id, m]) => (byId[id] = byId[id] || {})[i] = m));
+  const duo = {}, trio = { g: 0, w: 0, champs: {} }, vs = {}; let tg = 0;
+  const together = players.map(() => ({ g: 0, w: 0 })), alone = players.map(() => ({ g: 0, w: 0 }));
+  Object.values(byId).forEach(o => {
+    const idx = Object.keys(o).map(Number);
+    idx.forEach(i => { const mates = idx.some(j => j !== i && o[j].team === o[i].team); const b = mates ? together[i] : alone[i]; b.g++; if (o[i].win) b.w++; });
+    for (let a = 0; a < idx.length; a++) for (let b = a + 1; b < idx.length; b++) {
+      const i = idx[a], j = idx[b], k = i + '-' + j;
+      if (o[i].team === o[j].team) { const d = duo[k] = duo[k] || { i, j, g: 0, w: 0, kda: [0, 0, 0, 0], champs: {} }; d.g++; if (o[i].win) d.w++; d.kda[0] += o[i].k + o[i].a; d.kda[1] += o[i].d; d.kda[2] += o[j].k + o[j].a; d.kda[3] += o[j].d; const ck = o[i].champ + ' + ' + o[j].champ; d.champs[ck] = (d.champs[ck] || 0) + 1; }
+      else { const v = vs[k] = vs[k] || { i, j, g: 0, wi: 0 }; v.g++; if (o[i].win) v.wi++; }
+    }
+    if (idx.length === 3 && idx.every(i => o[i].team === o[idx[0]].team)) { trio.g++; if (o[idx[0]].win) trio.w++; const ck = idx.map(i => o[i].champ).join(' + '); trio.champs[ck] = (trio.champs[ck] || 0) + 1; }
+  });
+  const top = c => Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+  const duoRows = Object.values(duo).sort((a, b) => b.g - a.g);
+  const noData = !rows.some(r => Object.keys(r).length);
+  if (noData) return '';
+  return `<h2 style="margin-top:24px">🤝 Samen spelen</h2>
+  <div class="panel">${duoRows.length || trio.g ? `<div style="overflow:auto"><table class="tbl"><thead><tr><th>Samen</th><th>Games</th><th>Win rate</th><th>KDA (samen)</th><th>Meest gespeelde combinatie</th></tr></thead><tbody>
+    ${duoRows.map(d => { const t = top(d.champs); return `<tr><td>${esc(names[d.i])} + ${esc(names[d.j])}</td><td>${d.g}</td><td>${pct(d.w, d.g)}</td><td>${(d.kda[0] / Math.max(1, d.kda[1])).toFixed(1)} / ${(d.kda[2] / Math.max(1, d.kda[3])).toFixed(1)}</td><td>${t ? esc(t[0]) + ` <span class="mute">(${t[1]}×)</span>` : '–'}</td></tr>`; }).join('')}
+    ${trio.g ? `<tr><td><b>Alle drie</b></td><td>${trio.g}</td><td>${pct(trio.w, trio.g)}</td><td>–</td><td>${esc(top(trio.champs)[0])} <span class="mute">(${top(trio.champs)[1]}×)</span></td></tr>` : ''}</tbody></table></div>` : '<p class="mute">Geen games gevonden waarin twee van jullie in hetzelfde team zaten (binnen de gekozen queue).</p>'}
+    <div class="tag-title">Samen of alleen: win rate per speler</div>
+    <div class="pills">${players.map((p, i) => `<span class="chip">${esc(names[i])}: samen ${pct(together[i].w, together[i].g)} <span class="mute">(${together[i].g})</span> · alleen ${pct(alone[i].w, alone[i].g)} <span class="mute">(${alone[i].g})</span></span>`).join('')}</div>
+    ${Object.keys(vs).length ? `<div class="tag-title">Tegen elkaar</div><div class="pills">${Object.values(vs).map(v => `<span class="chip">${esc(names[v.i])} ${v.wi}–${v.g - v.wi} ${esc(names[v.j])} <span class="mute">(${v.g} games)</span></span>`).join('')}</div>` : ''}
+    <p class="mute" style="font-size:.78rem">Telt alleen games waarvan de teaminformatie is opgehaald (bij elke update komen er meer bij).</p></div>`;
+}
+
+/* 2. speelstijlprofiel */
+function styleHtml(data) {
+  if (!data.some(d => d.V.length >= 5)) return '';
+  const S2 = data.map(d => { const V = d.V, n = V.length || 1, mins = sum(V, m => m.dur) / 60, dm = sum(V, m => m.dp + m.dm + m.dt) || 1;
+    return { n: V.length, multi: sum(V, m => m.mk[0] + m.mk[1] * 2 + m.mk[2] * 3 + m.mk[3] * 4) / n, penta: sum(V, m => m.mk[3]), quadra: sum(V, m => m.mk[2]), solo: sum(V, m => m.solo) / n, fb: 100 * sum(V, m => m.fb) / n, ft: 100 * sum(V, m => m.ft) / n,
+      dobj: per(V, m => m.dobj), dturr: per(V, m => m.dturr), tt: per(V, m => m.tt), wpm: sum(V, m => m.wp) / (mins || 1), cw: per(V, m => m.cw), wk: per(V, m => m.wk), dead: 100 * sum(V, m => m.dead) / (sum(V, m => m.dur) || 1),
+      spree: per(V, m => m.spree), cct: per(V, m => m.cct), sk: per(V, m => m.sk), skd: per(V, m => m.skd), phys: 100 * sum(V, m => m.dp) / dm, mag: 100 * sum(V, m => m.dm) / dm, tru: 100 * sum(V, m => m.dt) / dm }; });
+  const MET = [['Multikills per game (gewogen)', 'multi', v => v.toFixed(2), 1], ['Quadra / penta kills', null, (v, s) => `${s.quadra} / ${s.penta}`, 0], ['Solo kills per game', 'solo', v => v.toFixed(2), 1], ['First blood', 'fb', v => v.toFixed(0) + '%', 1], ['Eerste toren (kill/assist)', 'ft', v => v.toFixed(0) + '%', 1],
+    ['Schade aan objectives / game', 'dobj', v => k1(v), 1], ['Schade aan torens / game', 'dturr', v => k1(v), 1], ['Torens gesloopt / game', 'tt', v => v.toFixed(2), 1],
+    ['Wards geplaatst per minuut', 'wpm', v => v.toFixed(2), 1], ['Control wards gekocht / game', 'cw', v => v.toFixed(1), 1], ['Vijandelijke wards gedood / game', 'wk', v => v.toFixed(1), 1],
+    ['Tijd dood (% van de game)', 'dead', v => v.toFixed(1) + '%', -1], ['Langste killing spree (gem.)', 'spree', v => v.toFixed(1), 1], ['Tijd CC op vijanden / game (s)', 'cct', v => Math.round(v), 1], ['Skillshots geraakt / ontweken', null, (v, s) => `${s.sk.toFixed(1)} / ${s.skd.toFixed(1)}`, 0]];
+  const win = {}; MET.forEach(([l, k, , dir]) => { if (!k || !dir) return; const c = S2.filter(s => s.n >= 5); if (c.length < 2) return; const m = Math.max(...c.map(s => s[k] * dir)); win[l] = S2.findIndex(s => s.n >= 5 && s[k] * dir === m); });
+  /* labels: wie is op een onderdeel duidelijk de uitschieter */
+  const labels = data.map(() => []), lab = (k, dir, t) => { const c = S2.map((s, i) => [s, i]).filter(([s]) => s.n >= 5); if (c.length < 2) return; const vals = c.map(([s]) => s[k] * dir).sort((a, b) => b - a); if (vals[0] > 0 && vals[0] >= vals[1] * 1.15) labels[c.find(([s]) => s[k] * dir === vals[0])[1]].push(t); };
+  lab('solo', 1, '⚔ Duelist (veel solo kills)'); lab('wpm', 1, '👁 Visiespeler'); lab('dobj', 1, '🏰 Objective-gericht'); lab('multi', 1, '💥 Multikill-jager'); lab('cct', 1, '🧊 CC-machine'); lab('dead', -1, '🛡 Blijft lang in leven'); lab('sk', 1, '🎯 Skillshot-speler');
+  return `<h2 style="margin-top:24px">🎮 Speelstijl</h2><div class="panel"><div class="players" style="margin-bottom:8px">${data.map((d, i) => `<div><b>${esc(d.name)}</b> <span class="mute">(${S2[i].n} games met uitgebreide data)</span><div class="pills" style="margin-top:6px">${labels[i].map(t => `<span class="chip gold">${t}</span>`).join('') || '<span class="mute">geen duidelijke uitschieter</span>'}</div>
+    <div class="tag-title">Schadeverdeling</div><div class="bar"><i class="ad" style="width:${S2[i].phys}%"></i><i class="ap" style="width:${S2[i].mag}%"></i><i style="width:${S2[i].tru}%;background:#ddd"></i></div><span class="mute" style="font-size:.78rem">fysiek ${S2[i].phys.toFixed(0)}% · magisch ${S2[i].mag.toFixed(0)}% · true ${S2[i].tru.toFixed(0)}%</span></div>`).join('')}</div>
+  <div style="overflow:auto"><table class="tbl"><thead><tr><th>Statistiek</th>${data.map(d => `<th>${esc(d.name)}</th>`).join('')}</tr></thead><tbody>${MET.map(([l, k, fmt]) => `<tr><td>${l}</td>${S2.map((s, i) => `<td${win[l] === i ? ' style="color:var(--green);font-weight:700"' : ''}>${s.n >= 3 ? fmt(k ? s[k] : 0, s) : '–'}${win[l] === i ? ' 👑' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <p class="mute" style="font-size:.78rem">Alleen games met uitgebreide gegevens. Tijd dood telt laag als beter. Het zijn gemiddelden over alle gekozen spelmodi; kies bovenaan één queue voor een eerlijkere vergelijking.</p></div>`;
+}
+
+/* 3. eerste 15 minuten (timeline) */
+function earlyHtml(data) {
+  if (!data.some(d => d.L.length >= 5)) return '';
+  const E = data.map(d => { const L = d.L, has = k => L.filter(m => m.tl[k] != null), avgk = k => { const a = has(k); return a.length ? per(a, m => m.tl[k]) : null; };
+    const ahead = has('gd15').filter(m => m.tl.gd15 > 0), behind = has('gd15').filter(m => m.tl.gd15 <= 0);
+    return { n: L.length, g10: avgk('g10'), c10: avgk('c10'), g15: avgk('g15'), c15: avgk('c15'), gd10: avgk('gd10'), gd15: avgk('gd15'), cd10: avgk('cd10'), cd15: avgk('cd15'), xd15: avgk('xd15'),
+      d10: per(L, m => m.tl.d10 || 0), k10: per(L, m => m.tl.k10 || 0), early: 100 * L.filter(m => (m.tl.d10 || 0) > 0).length / L.length, ahead, behind }; });
+  const f = (v, d = 0, sign = false) => v == null ? '<span class="mute">–</span>' : (sign && v > 0 ? '+' : '') + v.toFixed(d);
+  const colr = v => v == null ? '' : v > 0 ? 'color:var(--green)' : v < 0 ? 'color:var(--red)' : '';
+  const R = [['Goud op minuut 10', e => f(e.g10)], ['CS op minuut 10', e => f(e.c10, 1)], ['Goud op minuut 15', e => f(e.g15)], ['CS op minuut 15', e => f(e.c15, 1)],
+    ['Goudverschil met lane-tegenstander @10', e => `<span style="${colr(e.gd10)}">${f(e.gd10, 0, true)}</span>`], ['Goudverschil met lane-tegenstander @15', e => `<span style="${colr(e.gd15)}">${f(e.gd15, 0, true)}</span>`],
+    ['CS-verschil @10', e => `<span style="${colr(e.cd10)}">${f(e.cd10, 1, true)}</span>`], ['CS-verschil @15', e => `<span style="${colr(e.cd15)}">${f(e.cd15, 1, true)}</span>`], ['XP-verschil @15', e => `<span style="${colr(e.xd15)}">${f(e.xd15, 0, true)}</span>`],
+    ['Kills voor minuut 10 (gem.)', e => f(e.k10, 2)], ['Deaths voor minuut 10 (gem.)', e => f(e.d10, 2)], ['Games met een death voor minuut 10', e => e.early.toFixed(0) + '%']];
+  const tips = data.map((d, i) => { const e = E[i]; if (e.ahead.length + e.behind.length < 5) return ''; const wa = 100 * e.ahead.filter(m => m.win).length / Math.max(1, e.ahead.length), wb = 100 * e.behind.filter(m => m.win).length / Math.max(1, e.behind.length);
+    return `<li><b>${esc(d.name)}:</b> staat ${e.ahead.length}× voor op minuut 15 (${wa.toFixed(0)}% gewonnen) en ${e.behind.length}× achter (${wb.toFixed(0)}% gewonnen)${wa - wb >= 25 ? ' – het eerste kwartier bepaalt veel; een goede start is hier cruciaal' : wa - wb <= 10 ? ' – wint ook vaak als hij achter staat: sterke comebacks' : ''}.</li>`; }).filter(Boolean);
+  return `<h2 style="margin-top:24px">⏱ De eerste 15 minuten</h2><div class="panel"><div style="overflow:auto"><table class="tbl"><thead><tr><th>Statistiek</th>${data.map((d, i) => `<th>${esc(d.name)} <span class="mute">(${E[i].n})</span></th>`).join('')}</tr></thead><tbody>
+  ${R.map(([l, fn]) => `<tr><td>${l}</td>${E.map(e => `<td>${e.n >= 3 ? fn(e) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  ${tips.length ? `<ul class="list">${tips.join('')}</ul>` : ''}
+  <p class="mute" style="font-size:.78rem">Uit de minuut-voor-minuut-timeline. De verschillen met de lane-tegenstander bestaan alleen voor games met een directe tegenstander in dezelfde lane (dus niet bij ARAM of Arena).</p></div>`;
+}
+
+/* 4. matchups tegen lane-tegenstanders */
+function matchupsHtml(data) {
+  if (!data.some(d => d.V.some(m => m.opp))) return '';
+  const cards = data.map(d => {
+    const O = d.V.filter(m => m.opp), by = {};
+    O.forEach(m => { const b = by[m.opp.c] = by[m.opp.c] || { g: 0, w: 0, cs: 0, gold: 0, kd: 0, mine: {} }; b.g++; if (m.win) b.w++; b.cs += m.cs - m.opp.cs; b.gold += m.gold - m.opp.gold; b.kd += (m.k - m.opp.d) ; b.mine[m.champ] = (b.mine[m.champ] || 0) + 1; });
+    const list = Object.entries(by).filter(([, b]) => b.g >= 2).map(([c, b]) => ({ c, ...b })).sort((a, b) => b.w / b.g - a.w / a.g || b.g - a.g);
+    const avg = O.length ? { cs: per(O, m => m.cs - m.opp.cs), gold: per(O, m => m.gold - m.opp.gold), dmg: per(O, m => m.dmg - m.opp.dmg) } : null;
+    const row = x => { const ch = S.champs[x.c]; return `<tr><td>${ch ? `<img src="${portrait(ch)}" width="22" height="22" style="border-radius:50%;vertical-align:middle"> ${esc(ch.name)}` : esc(x.c)}</td><td>${x.g}</td><td>${pct(x.w, x.g)}</td><td style="color:${x.cs / x.g >= 0 ? 'var(--green)' : 'var(--red)'}">${x.cs / x.g >= 0 ? '+' : ''}${(x.cs / x.g).toFixed(0)}</td></tr>`; };
+    const best = list.filter(x => x.w / x.g >= .5).slice(0, 4), worst = [...list].reverse().filter(x => x.w / x.g < .5).slice(0, 4);
+    return `<div class="panel"><h3 style="margin-top:0">${esc(d.name)}</h3>
+      ${avg ? `<div class="pills"><span class="chip">${O.length} games met lane-tegenstander</span><span class="chip" style="color:${avg.gold >= 0 ? 'var(--green)' : 'var(--red)'}">goud ${avg.gold >= 0 ? '+' : ''}${Math.round(avg.gold)}</span><span class="chip" style="color:${avg.cs >= 0 ? 'var(--green)' : 'var(--red)'}">CS ${avg.cs >= 0 ? '+' : ''}${avg.cs.toFixed(0)}</span><span class="chip" style="color:${avg.dmg >= 0 ? 'var(--green)' : 'var(--red)'}">schade ${avg.dmg >= 0 ? '+' : ''}${k1(avg.dmg)}</span></div><p class="mute" style="font-size:.78rem">Gemiddeld verschil met je tegenstander aan het einde van de game.</p>` : ''}
+      <div class="tag-title">Beste matchups (≥ 2 games)</div>${best.length ? `<table class="tbl"><thead><tr><th>Tegenstander</th><th>G</th><th>WR</th><th>CS±</th></tr></thead><tbody>${best.map(row).join('')}</tbody></table>` : '<span class="mute">nog niet genoeg games</span>'}
+      <div class="tag-title">Lastigste matchups (≥ 2 games)</div>${worst.length ? `<table class="tbl"><thead><tr><th>Tegenstander</th><th>G</th><th>WR</th><th>CS±</th></tr></thead><tbody>${worst.map(row).join('')}</tbody></table>` : '<span class="mute">nog niet genoeg games</span>'}</div>`;
+  });
+  return `<h2 style="margin-top:24px">🆚 Matchups tegen je lane-tegenstander</h2><div class="players">${cards.join('')}</div>`;
 }
 
 /* ---------- Home ---------- */
