@@ -533,6 +533,23 @@ function matchupsHtml(data) {
   return `<h2 style="margin-top:24px">🆚 Matchups tegen je lane-tegenstander</h2><div class="players">${cards.join('')}</div>`;
 }
 
+/* ---------- Combo's op de champion-pagina ---------- */
+function comboSeq(keys, full) {
+  const idx = { Q: 0, W: 1, E: 2, R: 3 };
+  return keys.split(' ').map(t => {
+    if (t in idx && full) { const s = full.spells[idx[t]]; return `<div class="skill" title="${esc(t)} – ${esc(s.name)}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}" alt=""><b>${t}</b></div>`; }
+    if (t === 'P' && full) return `<div class="skill" title="Passive – ${esc(full.passive.name)}"><img src="${CDN}/cdn/${S.ver}/img/passive/${full.passive.image.full}" alt=""><b>P</b></div>`;
+    return `<span class="chip gold" title="${t === 'AA' ? 'basisaanval' : ''}">${esc(t)}</span>`;
+  }).join('<span class="arrow">›</span>');
+}
+function comboPanel(c, full, archKey) {
+  const own = window.RC_COMBOS?.[c.id], tips = window.RC_COMBO_TIPS?.[archKey] || [];
+  return `<div class="panel"><h2>⚡ Combo's</h2>
+    ${own ? own.map(x => `<div class="combo"><div class="row" style="gap:10px"><b>${esc(x.n)}</b></div><div class="row" style="gap:6px;margin:6px 0">${comboSeq(x.k, full)}</div><div class="mute" style="font-size:.88rem">${esc(x.t)}</div></div>`).join('') : `<p class="mute">Voor ${esc(c.name)} staat er nog geen vaste combo. Dit is de algemene aanpak voor deze klasse:</p>`}
+    <div class="tag-title">${own ? 'Algemene combo-tips voor deze klasse' : 'Algemene aanpak'}</div><ul class="list">${tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+    <p class="mute" style="font-size:.78rem">Q W E R zijn je skills, AA is een basisaanval. Het zijn basiscombo's; pas ze aan op je situatie en oefen ze in de Practice Tool (Aangepast spel → Practice Tool).</p></div>`;
+}
+
 /* ---------- Home ---------- */
 function renderHome(app) {
   const day = Math.floor(Date.now() / 864e5), pick = S.champList[day % S.champList.length];
@@ -684,6 +701,8 @@ async function renderChamp(app, [id, lane]) {
       </div>
       <div class="row" style="margin-top:14px"><button class="btn primary" id="dlSet">⬇ Item set (.json) voor League client</button><button class="btn" id="cpBuild">⧉ Kopieer build als tekst</button></div>
       <p class="mute" style="font-size:.8rem">Plaats het bestand in <code>…\\League of Legends\\Config\\Champions\\${esc(c.id)}\\Recommended\\</code> en maak de map aan indien nodig.</p></div>
+
+    ${comboPanel(c, full, B.archKey)}
 
     <div class="panel"><h2>Skill-volgorde</h2>${full ? `
       <div class="skillrow"><div class="skill" title="${esc(full.passive.name)}"><img src="${CDN}/cdn/${S.ver}/img/passive/${full.passive.image.full}"><b>P</b></div>

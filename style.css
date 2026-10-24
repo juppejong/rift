@@ -177,3 +177,5 @@ details summary{cursor:pointer;list-style:none}
 .adv .ab{flex:1;min-width:0}
 .why2{display:flex;gap:4px 12px;flex-wrap:wrap;font-size:.8rem;color:var(--green)}
 
+
+.combo{padding:8px 0;border-bottom:1px dashed var(--line)}.combo:last-of-type{border-bottom:0}
