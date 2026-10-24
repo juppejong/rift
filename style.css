@@ -167,3 +167,13 @@ details summary{cursor:pointer;list-style:none}
 .sug .pills{margin-top:2px}
 
 .players{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}
+
+.qrow{margin:10px 0}.qq{font-weight:600;color:var(--gold2);margin-bottom:6px}.qopts{display:flex;gap:6px;flex-wrap:wrap}
+.advrow{display:grid;gap:10px}
+.adv{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--text);transition:.15s}
+.adv:hover{border-color:var(--gold);transform:translateX(3px)}
+.adv .rk{font-family:Georgia,serif;font-size:1.3rem;color:var(--gold);width:38px;text-align:center}
+.adv img{width:58px;height:58px;border-radius:50%;border:2px solid var(--gold);flex:none}
+.adv .ab{flex:1;min-width:0}
+.why2{display:flex;gap:4px 12px;flex-wrap:wrap;font-size:.8rem;color:var(--green)}
+

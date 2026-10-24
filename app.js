@@ -260,7 +260,7 @@ const itemRow = (arr, sep = false) => `<div class="items">${arr.map((i, idx) => 
 /* ---------- routes ---------- */
 const routes = {
   home: renderHome, lane: renderLane, champions: renderChampions, champ: renderChamp, counter: renderCounter,
-  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers,
+  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers, advies: renderAdvice,
 };
 
 /* ---------- Gedeelde helpers (ook in de GitHub Pages-versie) ---------- */
@@ -354,6 +354,80 @@ function playersHtml(players, queue, limit = 0) {
   ${facts.length ? `<div class="panel"><h2>🧠 Wie is waar het beste in?</h2><ul class="list">${facts.map(f => `<li>${f}</li>`).join('')}</ul></div>` : ''}
   ${sharedRows.length ? `<div class="panel"><h2>Gedeelde champions</h2><div style="overflow:auto"><table class="tbl"><thead><tr><th>Champion</th>${data.map(d => `<th>${esc(d.p.account.name)}</th>`).join('')}</tr></thead><tbody>${sharedRows.map(([id, o]) => { const c = S.champs[id];
     return `<tr><td>${c ? `<a href="#/champ/${c.id}/${lanesOf(c)[0]}"><img src="${portrait(c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(c.name)}</a>` : esc(id)}</td>${data.map((d, i) => o[i] ? `<td>${o[i].g}× · ${(100 * o[i].w / o[i].g).toFixed(0)}% WR · ${o[i].kda.toFixed(1)} KDA</td>` : '<td class="mute">–</td>').join('')}</tr>`; }).join('')}</tbody></table></div></div>` : ''}`;
+}
+
+/* ---------- Advies: "Wat moet ik spelen?" met een paar simpele vragen ---------- */
+const quiz = { lane: '', diff: '', style: '', dmg: '', tank: '', range: '', win: '', who: '', min: true };
+const QUIZ = [
+  { k: 'lane', q: 'Welke lane wil je spelen?', o: [['', 'Maakt niet uit'], ...Object.entries(LANES).map(([k, l]) => [k, `${l.icon} ${l.label}`])] },
+  { k: 'diff', q: 'Hoe ervaren ben je met League?', o: [['', 'Maakt niet uit'], ['easy', 'Beginner – liever simpel'], ['mid', 'Gemiddeld'], ['hard', 'Ervaren – ik hou van uitdaging']] },
+  { k: 'style', q: 'Wat is je speelstijl?', o: [['', 'Weet ik niet'], ['aggr', 'Agressief – ik zoek gevechten'], ['safe', 'Veilig – schade maken op afstand'], ['team', 'Teamspeler – anderen helpen en beschermen']] },
+  { k: 'dmg', q: 'Welk type schade?', o: [['', 'Maakt niet uit'], ['ad', 'Fysiek (AD)'], ['ap', 'Magisch (AP)']] },
+  { k: 'tank', q: 'Hoeveel health en taaiheid?', o: [['', 'Maakt niet uit'], ['tanky', 'Taai – veel health, ik kan incasseren'], ['squishy', 'Kwetsbaar maar veel schade']] },
+  { k: 'range', q: 'Op welke afstand?', o: [['', 'Maakt niet uit'], ['melee', 'Dichtbij (melee)'], ['ranged', 'Op afstand (ranged)']] },
+  { k: 'win', q: 'Hoe wil je winnen?', o: [['', 'Maakt niet uit'], ['early', 'Vroeg: snelle kills en tempo'], ['late', 'Laat: schalen en de game dragen'], ['fight', 'Teamfights'], ['solo', '1v1 en split push']] },
+];
+const Q_ARCH = {
+  aggr: ['adAssassin', 'apAssassin', 'fighter', 'critSkirmisher', 'engage', 'apFighter'], safe: ['marksman', 'mage', 'mageSupport', 'enchanter'], team: ['enchanter', 'engage', 'tank', 'mageSupport'],
+  early: ['adAssassin', 'apAssassin', 'fighter', 'engage'], late: ['marksman', 'mage', 'critSkirmisher'], fight: ['tank', 'engage', 'mage', 'apFighter', 'marksman'], solo: ['fighter', 'critSkirmisher', 'apFighter'],
+};
+const Q_TXT = { aggr: 'past bij agressief spel', safe: 'veilig spel op afstand', team: 'goed voor je team', early: 'sterk vroeg in het spel', late: 'schaalt goed naar de late game', fight: 'sterk in teamfights', solo: 'sterk in 1v1 en split push' };
+
+function scoreAdvice(c, lane) {
+  const ak = archFor(c, lane), A = ARCHETYPES[ak], h = hpRating(c), dr = dmgRating(c, lane), why = []; let s = 0;
+  const add = (v, t) => { s += v; if (v > 0 && t) why.push(t); };
+  if (lanesOf(c)[0] === lane) s += 1.5;
+  if (quiz.diff === 'easy') { const d = c.info.difficulty; add(d <= 3 ? 4 : d <= 4 ? 3 : d <= 6 ? 0 : -4, d <= 4 ? 'makkelijk te leren' : ''); }
+  if (quiz.diff === 'mid') { const d = c.info.difficulty; add(d >= 4 && d <= 6 ? 2 : d <= 3 ? 1 : d >= 8 ? -1 : 0, d >= 4 && d <= 6 ? 'gemiddelde moeilijkheid' : ''); }
+  if (quiz.diff === 'hard') { const d = c.info.difficulty; add(d >= 7 ? 3 : d >= 5 ? 1 : -1, d >= 7 ? 'uitdagend, hoge skill ceiling' : ''); }
+  if (quiz.style) add(Q_ARCH[quiz.style].includes(ak) ? 3 : -1, Q_TXT[quiz.style]);
+  if (quiz.win) add(Q_ARCH[quiz.win].includes(ak) ? 3 : -1, Q_TXT[quiz.win]);
+  if (quiz.dmg) { const t = A.dmg === 'ad' || A.dmg === 'ap' ? A.dmg : (c.info.magic > c.info.attack ? 'ap' : 'ad'), w = A.dmg === 'ad' || A.dmg === 'ap' ? 3 : 1.5; add(t === quiz.dmg ? w : -w, `${quiz.dmg === 'ad' ? 'fysieke' : 'magische'} schade`); }
+  if (quiz.tank === 'tanky') add(h >= 4 ? 3 : h === 3 ? 1 : -2, h >= 4 ? 'veel health' : h === 3 ? 'redelijk veel health' : '');
+  if (quiz.tank === 'squishy') add(dr >= 4 && h <= 3 ? 3 : dr <= 2 ? -2 : 0, dr >= 4 && h <= 3 ? 'veel schade, weinig health' : '');
+  if (quiz.range === 'ranged') add(c.stats.attackrange >= 400 ? 3 : c.stats.attackrange < 300 ? -3 : 0, c.stats.attackrange >= 400 ? 'ranged' : '');
+  if (quiz.range === 'melee') add(c.stats.attackrange < 300 ? 3 : c.stats.attackrange >= 400 ? -3 : 0, c.stats.attackrange < 300 ? 'melee' : '');
+  const st = statOf(c.id, lane);
+  if (S.stats && st && st.g >= MIN_GAMES) {
+    add(st.tier === 'S' ? 2 : st.tier === 'A' ? 1 : st.tier === 'C' ? -1 : 0, st.tier === 'S' || st.tier === 'A' ? `${st.tier}-tier in de data (${st.wr.toFixed(0)}% WR)` : '');
+    s += (shrunk(c.id, lane) - .5) * 15;
+  }
+  let mine = null;
+  const P = window.RC_FRIENDS?.players?.find(p => p.account.name === quiz.who);
+  if (P) {
+    const ms = P.matches.filter(m => m.champ === c.id), g = ms.length, w = ms.filter(m => m.win).length;
+    if (g >= 2) { s += Math.min(4, g / 4) + (100 * w / g - 50) / 25; mine = `${g}× gespeeld, ${(100 * w / g).toFixed(0)}% WR`; why.push(`jij speelt hem al (${mine})`); }
+    if (P.mastery.slice(0, 10).some(m => String(m.champId) === c.key)) { s += 2; if (!mine) why.push('hoge mastery bij jou'); }
+  }
+  return { s, why };
+}
+
+function adviceList() {
+  const lanes = quiz.lane ? [quiz.lane] : Object.keys(LANES), seen = {}, out = [];
+  lanes.forEach(lane => lanePool(lane).forEach(c => {
+    if (S.stats && quiz.min && (statOf(c.id, lane)?.g || 0) < MIN_GAMES) return;
+    const r = scoreAdvice(c, lane); if (!seen[c.id] || r.s > seen[c.id].s) seen[c.id] = { c, lane, ...r };
+  }));
+  return Object.values(seen).sort((a, b) => b.s - a.s || a.c.info.difficulty - b.c.info.difficulty).slice(0, 10);
+}
+
+function renderAdvice(app) {
+  const players = window.RC_FRIENDS?.players || [];
+  const answered = QUIZ.filter(q => quiz[q.k]).length;
+  const list = adviceList();
+  app.innerHTML = `<h1>🎯 Wat moet ik spelen?</h1><p class="mute">Beantwoord een paar vragen (sla over wat je niet weet) en je krijgt direct een top 10. Het advies telt je antwoorden, de win rates uit de matchdata en optioneel wat jij al goed speelt.</p>
+  <div class="panel">${QUIZ.map(q => `<div class="qrow"><div class="qq">${q.q}</div><div class="qopts">${q.o.map(([v, l]) => `<button class="tab ${quiz[q.k] === v ? 'on' : ''}" data-q="${q.k}|${v}">${esc(l)}</button>`).join('')}</div></div>`).join('')}
+    ${players.length ? `<div class="qrow"><div class="qq">Voor wie? <span class="mute">(houdt rekening met wat die speler al speelt)</span></div><div class="qopts"><button class="tab ${!quiz.who ? 'on' : ''}" data-q="who|">Niemand specifiek</button>${players.map(p => `<button class="tab ${quiz.who === p.account.name ? 'on' : ''}" data-q="who|${esc(p.account.name)}">${esc(p.account.name)}</button>`).join('')}</div></div>` : ''}
+    <div class="row" style="margin-top:8px"><button class="btn" id="qReset">Antwoorden wissen</button>${S.stats ? `<label class="mute"><input type="checkbox" id="qmin" ${quiz.min ? 'checked' : ''}> alleen champions met ≥ ${MIN_GAMES} games data</label>` : ''}</div></div>
+  <h2>Jouw top ${list.length}</h2>${answered ? '' : '<p class="mute">Nog geen vragen beantwoord: dit is de algemene top. Kies hierboven wat bij je past.</p>'}
+  <div class="advrow">${list.map((x, i) => { const st = statOf(x.c.id, x.lane);
+    return `<a class="adv" href="#/champ/${x.c.id}/${x.lane}"><div class="rk">#${i + 1}</div><img src="${portrait(x.c)}" alt="">
+      <div class="ab"><div class="row" style="gap:6px"><b>${esc(x.c.name)}</b><span class="chip gold">${LANES[x.lane].icon} ${LANES[x.lane].label}</span><span class="chip">${esc(ARCHETYPES[archFor(x.c, x.lane)].label.split('(')[0].trim())}</span>${diffBar(x.c.info.difficulty)}</div>
+      <div class="pills" style="margin:4px 0">${badges(x.c, x.lane)}${st ? `<span class="chip">${st.wr.toFixed(0)}% WR · ${st.g} games</span>` : ''}</div>
+      <div class="why2">${x.why.length ? x.why.slice(0, 5).map(w => `<span>✔ ${esc(w)}</span>`).join('') : '<span class="mute">algemene keuze voor deze lane</span>'}</div></div></a>`; }).join('') || '<div class="empty">Geen champions gevonden. Zet het vinkje voor datavereiste uit of pas je antwoorden aan.</div>'}</div>`;
+  $$('[data-q]').forEach(b => b.onclick = () => { const [k, v] = b.dataset.q.split('|'); quiz[k] = v; const y = window.scrollY; renderAdvice(app); window.scrollTo(0, y); });
+  $('#qReset').onclick = () => { Object.keys(quiz).forEach(k => k !== 'min' && (quiz[k] = '')); renderAdvice(app); };
+  if ($('#qmin')) $('#qmin').onchange = e => { quiz.min = e.target.checked; const y = window.scrollY; renderAdvice(app); window.scrollTo(0, y); };
 }
 
 /* ---------- Home ---------- */
