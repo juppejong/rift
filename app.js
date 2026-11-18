@@ -43,6 +43,7 @@ async function loadAll() {
   S.stats = window.RC_STATS || null; // stats.js wordt gemaakt door collect.js
   buildTiers();
   $('#verBadge').textContent = 'Patch ' + S.ver;
+  $('#footPatch').textContent = 'Gamedata: patch ' + S.ver + (S.stats ? ` · ${S.stats.meta.matches.toLocaleString('nl-NL')} geanalyseerde games` : '');
 }
 
 /* ---------- indexen ---------- */
@@ -260,7 +261,7 @@ const itemRow = (arr, sep = false) => `<div class="items">${arr.map((i, idx) => 
 /* ---------- routes ---------- */
 const routes = {
   home: renderHome, lane: renderLane, champions: renderChampions, champ: renderChamp, counter: renderCounter,
-  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers, advies: renderAdvice,
+  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers, advies: renderAdvice, over: renderAbout, privacy: renderPrivacy, voorwaarden: renderTerms, contact: renderContact,
 };
 
 /* ---------- Gedeelde helpers (ook in de GitHub Pages-versie) ---------- */
@@ -283,10 +284,19 @@ function aggregate(list) {
   };
 }
 
+const PAGE_TITLES = { home: 'Rift Companion – League of Legends champions, runes, items en advies', advies: 'Champion-advies: wat moet ik spelen?', lane: 'Tierlist en champions per lane', champions: 'Alle League of Legends champions', counter: 'Counter picker', team: 'Team builder met win rate-schatting', stats: 'Champion-statistieken: health, schade en win rate', items: 'Alle items', runes: 'Alle runes', favs: 'Favorieten', spelers: 'Spelers', me: 'Mijn account', over: 'Over ons', privacy: 'Privacybeleid', voorwaarden: 'Gebruiksvoorwaarden', contact: 'Contact' };
+function setPageMeta(name, parts) {
+  let t = PAGE_TITLES[name] || PAGE_TITLES.home;
+  if (name === 'lane' && LANES[parts[1]]) t = `Tierlist ${LANES[parts[1]].label}: beste champions en win rates`;
+  document.title = name === 'home' || !PAGE_TITLES[name] ? PAGE_TITLES.home : `${t} | Rift Companion`;
+}
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const name = parts[0] || 'home';
-  $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === name));
+  $$('#nav a[data-r]').forEach(a => a.classList.toggle('on', a.dataset.r === name));
+  $('#ddBtn')?.classList.toggle('on', !!$('#ddMenu a.on'));
+  $('#nav').classList.remove('open'); $('#ddMenu').classList.remove('open'); $('#navToggle').setAttribute('aria-expanded', 'false');
+  setPageMeta(name, parts);
   const fn = routes[name] || renderHome;
   const app = $('#app');
   try { fn(app, parts.slice(1)); } catch (e) { console.error(e); app.innerHTML = `<div class="panel warn">Er ging iets mis: ${esc(e.message)}</div>`; }
@@ -550,26 +560,119 @@ function comboPanel(c, full, archKey) {
     <p class="mute" style="font-size:.78rem">Q W E R zijn je skills, AA is een basisaanval. Het zijn basiscombo's; pas ze aan op je situatie en oefen ze in de Practice Tool (Aangepast spel → Practice Tool).</p></div>`;
 }
 
-/* ---------- Home ---------- */
+/* ---------- Home (landingspagina) ---------- */
 function renderHome(app) {
-  const day = Math.floor(Date.now() / 864e5), pick = S.champList[day % S.champList.length];
-  const pl = lanesOf(pick)[0] || 'MID';
-  const total = S.champList.length, items = completed.length;
+  const total = S.champList.length, items = completed.length, matches = S.stats?.meta?.matches || 0;
+  let top = [];
+  if (S.stats) {
+    Object.entries(S.stats.lanes).forEach(([lane, L]) => Object.entries(L.champs).forEach(([id, c]) => {
+      if (c.g >= MIN_GAMES && S.champs[id] && lanesOf(S.champs[id]).includes(lane)) top.push({ id, lane, s: wilson(c.w, c.g) });
+    }));
+    top = top.sort((a, b) => b.s - a.s).slice(0, 8);
+  }
+  const feats = [
+    ['🎯', 'Champion-advies', 'Beantwoord een paar vragen over lane, speelstijl en ervaring en krijg direct een top 10 op maat.', '#/advies'],
+    ['📊', 'Tierlists per lane', 'Win rates en tiers uit echte Emerald+-games, met health- en schadecijfers per champion.', '#/lane/MID'],
+    ['⚔️', 'Builds, runes en combo\'s', 'Per champion en lane: runes, summoner spells, skill-volgorde, items en combo\'s met uitleg.', '#/champions'],
+    ['🧩', 'Team builder', 'Vul één champion in en krijg suggesties voor de andere lanes, inclusief een win rate-schatting.', '#/team'],
+    ['🆚', 'Counter picker', 'Kies de lane en de vijandelijke champion en zie welke picks er het best tegenin gaan.', '#/counter'],
+    ['📈', 'Statistieken', 'Vergelijk health, armor, schade en win rate van alle champions in één sorteerbare tabel.', '#/stats'],
+  ];
   app.innerHTML = `
-  <section class="hero"><h1>Welkom op de Kloof, Summoner.</h1>
-    <p>Alle ${total} champions, per lane gesorteerd, met aanbevolen runes, summoner spells, skill-volgorde en items. Bekijk matchups, bouw een teamsamenstelling en exporteer je item set naar de League-client.</p>
-    <div class="row"><a class="btn primary" href="#/lane/MID">Start met een lane →</a><a class="btn" href="#/counter">Counter picker</a><a class="btn" href="#/team">Team builder</a></div></section>
-  <div class="stats-row"><div class="stat"><b>${total}</b><span>champions</span></div><div class="stat"><b>${items}</b><span>afgeronde items</span></div>
-   <div class="stat"><b>${S.runes.reduce((n, t) => n + t.slots.reduce((m, s) => m + s.runes.length, 0), 0)}</b><span>runes</span></div><div class="stat"><b>${S.ver}</b><span>patch</span></div></div>
-  <h2>Kies je lane</h2>
-  <div class="lane-grid">${Object.entries(LANES).map(([k, l]) => `<a class="lane-card" href="#/lane/${k}"><div class="ic">${l.icon}</div><h3>${l.label}</h3><p>${l.desc}</p><p class="mute" style="margin-top:6px">${lanePool(k, false).length} primair · ${lanePool(k).length} totaal</p></a>`).join('')}</div>
-  <div class="cols">
-    <div class="panel"><h2>Champion van de dag</h2><div class="row"><img src="${portrait(pick)}" width="72" height="72" style="border-radius:14px"><div><h3 style="margin:0">${esc(pick.name)}</h3><span class="mute">${esc(pick.title)}</span><div class="pills">${lanesOf(pick).map(l => `<span class="chip gold">${LANES[l].label}</span>`).join('')}</div></div><a class="btn" style="margin-left:auto" href="#/champ/${pick.id}/${pl}">Bekijk build →</a></div></div>
-    <div class="panel"><h2>Algemene tips</h2><ul class="list">${GENERIC_TIPS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
-  </div>
-  <h2>Beginner-vriendelijke picks per lane</h2>
-  ${Object.keys(LANES).map(l => `<h3>${LANES[l].icon} ${LANES[l].label}</h3><div class="grid">${lanePool(l, false).filter(c => c.info.difficulty <= 4).sort((a, b) => a.info.difficulty - b.info.difficulty).slice(0, 6).map(c => champCard(c, l, 'Primair')).join('')}</div>`).join('')}`;
+  <section class="hero2">
+    <span class="eyebrow">Patch ${esc(S.ver.split('.').slice(0, 2).join('.'))} · Nederlandstalig · gratis</span>
+    <h1>Kies de juiste champion. <em>Bouw de beste build.</em></h1>
+    <p class="lead">Advies, tierlists, runes, items en combo's voor alle ${total} champions in League of Legends. Zonder account, in het Nederlands en bijgewerkt per patch.</p>
+    <form class="hero-search" id="heroForm"><input id="heroInput" list="heroNames" placeholder="Zoek een champion, bijvoorbeeld Ahri…" aria-label="Zoek een champion" autocomplete="off"><button class="btn primary lg">Zoek</button></form>
+    <datalist id="heroNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+    <div class="btnrow"><a class="btn primary lg" href="#/advies">🎯 Wat moet ik spelen?</a><a class="btn lg" href="#/lane/MID">Bekijk de tierlists</a></div>
+    <div class="metrics"><div><b>${total}</b><span>champions</span></div><div><b>${items}</b><span>items</span></div>${matches ? `<div><b>${matches.toLocaleString('nl-NL')}</b><span>geanalyseerde games</span></div>` : ''}<div><b>${esc(S.ver.split('.').slice(0, 2).join('.'))}</b><span>huidige patch</span></div></div>
+  </section>
+
+  <section class="sec"><h2>Alles wat je nodig hebt om beter te kiezen</h2><p class="sub">Eén plek voor champion-keuze, builds en teamsamenstelling, gebaseerd op echte data en uitgelegd in het Nederlands.</p>
+    <div class="feat-grid">${feats.map(([ic, t, d, h]) => `<a class="feat" href="${h}"><div class="ic">${ic}</div><h3>${t}</h3><p>${d}</p></a>`).join('')}</div></section>
+
+  <section class="sec"><h2>Zo werkt het</h2><p class="sub">In drie stappen van twijfel naar een volledige build.</p>
+    <div class="steps"><div class="step"><h3>Kies je lane en stijl</h3><p>Geef aan wat je wilt spelen of laat de advies-quiz voor je kiezen.</p></div>
+    <div class="step"><h3>Vergelijk de opties</h3><p>Bekijk tiers, win rates, health en schade en zie waarom een champion bij je past.</p></div>
+    <div class="step"><h3>Neem de build over</h3><p>Runes, items, skills en combo's staan klaar, en je kunt een item set voor de League-client downloaden.</p></div></div></section>
+
+  ${top.length ? `<section class="sec"><h2>Sterkste picks van deze patch</h2><p class="sub">Op basis van win rate en aantal games in onze steekproef (minstens ${MIN_GAMES} games).</p><div class="grid">${top.map(x => champCard(S.champs[x.id], x.lane, 'Primair')).join('')}</div></section>` : ''}
+
+  <section class="sec"><h2>Kies je lane</h2>
+    <div class="lane-grid">${Object.entries(LANES).map(([k, l]) => `<a class="lane-card" href="#/lane/${k}"><div class="ic">${l.icon}</div><h3>${l.label}</h3><p>${l.desc}</p><p class="mute" style="margin-top:6px">${lanePool(k, false).length} primair · ${lanePool(k).length} totaal</p></a>`).join('')}</div></section>
+
+  <section class="sec faq"><h2>Veelgestelde vragen</h2>
+    <details><summary>Is Rift Companion gratis?</summary><p>Ja. Je hebt geen account nodig en alles is gratis te gebruiken.</p></details>
+    <details><summary>Waar komen de gegevens vandaan?</summary><p>Champions, items, runes en afbeeldingen komen rechtstreeks van Riot Games (Data Dragon) en zijn daardoor altijd van de huidige patch. De win rates komen uit een eigen steekproef van ranked games van Emerald-spelers en hoger, opgehaald via de officiële Riot API.</p></details>
+    <details><summary>Hoe betrouwbaar zijn de win rates en tiers?</summary><p>Ze zijn gebaseerd op een steekproef${matches ? ` van ${matches.toLocaleString('nl-NL')} games` : ''}. Een tier tonen we pas vanaf ${MIN_GAMES} games per champion, en kleine aantallen geven altijd ruis. Zie de cijfers als een goede indicatie, niet als een garantie.</p></details>
+    <details><summary>Zijn de Nederlandse teksten officieel?</summary><p>Nee. Riot levert de gamebeschrijvingen niet in het Nederlands. Wij vertalen ze zelf; namen van champions, items en skills laten we in het Engels zodat je ze in de game herkent.</p></details>
+    <details><summary>Slaan jullie persoonlijke gegevens op?</summary><p>Nee. Er zijn geen accounts of tracking-cookies. Je favorieten en voorkeuren blijven in je eigen browser. Lees het <a href="#/privacy">privacybeleid</a> voor de details.</p></details>
+    <details><summary>Is dit een officiële Riot Games-website?</summary><p>Nee. Rift Companion is een onafhankelijk project en is niet door Riot Games goedgekeurd. Alle handelsmerken zijn eigendom van Riot Games, Inc.</p></details></section>
+
+  <section class="band"><h2>Klaar om slimmer te kiezen?</h2><p>Beantwoord zeven korte vragen en je hebt binnen een minuut een top 10 champions die bij je passen.</p><a class="btn primary lg" href="#/advies">Start de advies-quiz →</a></section>`;
+  const go = e => { e.preventDefault(); const c = findChampByName($('#heroInput').value); if (c) location.hash = `#/champ/${c.id}/${lanesOf(c)[0] || 'MID'}`; else toast('Champion niet gevonden'); };
+  $('#heroForm').addEventListener('submit', go);
+  $('#heroInput').addEventListener('change', go);
 }
+
+/* ---------- Tekstpagina's: over, privacy, voorwaarden, contact ---------- */
+const SITE_UPDATED = '18 november 2026';
+const GITHUB_ISSUES = 'https://github.com/juppejong/rift/issues';
+function prose(app, html) { app.innerHTML = `<article class="prose">${html}</article>`; }
+
+function renderAbout(app) {
+  const m = S.stats?.meta?.matches;
+  prose(app, `<h1>Over Rift Companion</h1><p class="meta">Laatst bijgewerkt: ${SITE_UPDATED}</p>
+  <p>Rift Companion helpt je om in League of Legends de juiste champion te kiezen en daar de beste build bij te maken. Je vindt hier advies op maat, tierlists per lane, runes, items, combo's, een team builder en een counter picker, allemaal in het Nederlands.</p>
+  <h2>Waar komen de gegevens vandaan?</h2>
+  <ul><li><b>Champions, items, runes en afbeeldingen</b> komen rechtstreeks van Riot Games (Data Dragon). Daardoor staan nieuwe patches automatisch in de site.</li>
+  <li><b>Win rates, tiers en schadecijfers</b> komen uit een eigen steekproef${m ? ` van ${m.toLocaleString('nl-NL')} ranked games` : ''} van Emerald-spelers en hoger op EUW, opgehaald via de officiële Riot API. Er worden daarbij geen spelersnamen gepubliceerd.</li>
+  <li><b>Vertalingen</b> van de gamebeschrijvingen maken wij zelf. Namen van champions, items en skills blijven Engels, zoals in de game.</li></ul>
+  <h2>Hoe berekenen we het advies?</h2>
+  <p>De advies-quiz geeft punten per antwoord (zoals lane, moeilijkheid, schadetype, taaiheid en speelstijl) en telt de win rate uit onze data mee. De team builder schat de team win rate uit de gemiddelde win rate van de gekozen champions en kleine correcties voor de samenstelling. Builds en matchups volgen vaste regels per soort champion.</p>
+  <div class="note"><b>Let op:</b> dit zijn <b>indicaties</b>, geen garanties. Een kleine steekproef geeft ruis, en builds hangen altijd af van de situatie in je game.</div>
+  <h2>Onafhankelijk project</h2>
+  <p>Rift Companion is niet door Riot Games goedgekeurd en weerspiegelt niet de standpunten of meningen van Riot Games of iemand die officieel betrokken is bij het produceren of beheren van Riot Games-eigendommen. Riot Games en alle bijbehorende eigendommen zijn handelsmerken of gedeponeerde handelsmerken van Riot Games, Inc.</p>
+  <h2>Feedback</h2><p>Zie je een fout of heb je een idee? Laat het ons weten via de <a href="#/contact">contactpagina</a>.</p>`);
+}
+
+function renderPrivacy(app) {
+  prose(app, `<h1>Privacybeleid</h1><p class="meta">Laatst bijgewerkt: ${SITE_UPDATED}</p>
+  <p>Wij vinden je privacy belangrijk. Rift Companion is zo gebouwd dat we zo weinig mogelijk over je weten.</p>
+  <h2>Welke gegevens verwerken wij?</h2>
+  <ul><li><b>Geen account en geen formulieren.</b> Je hoeft nergens persoonlijke gegevens in te vullen om de site te gebruiken.</li>
+  <li><b>Geen tracking.</b> We gebruiken geen advertentie- of analysecookies en delen geen gegevens met adverteerders.</li>
+  <li><b>Voorkeuren in je browser.</b> Je favoriete champions en instellingen (zoals filters) worden alleen lokaal in je browser opgeslagen (localStorage). Deze gegevens verlaten je apparaat niet en je kunt ze zelf wissen via je browserinstellingen.</li></ul>
+  <h2>Externe diensten</h2>
+  <ul><li><b>Riot Games (Data Dragon).</b> Champion-, item- en runegegevens en afbeeldingen laadt je browser rechtstreeks van ddragon.leagueoflegends.com. Riot ziet daarbij technische gegevens zoals je IP-adres, volgens het eigen privacybeleid van Riot Games.</li>
+  <li><b>Hosting.</b> De website wordt gehost door GitHub Pages (GitHub, Inc.). Zij verwerken technische loggegevens zoals je IP-adres voor het leveren en beveiligen van de site, volgens hun privacyverklaring.</li></ul>
+  <h2>Spelersgegevens uit de Riot API</h2>
+  <p>De win rates en statistieken komen uit geaggregeerde ranked-wedstrijdgegevens van de Riot API. Daarin staan geen spelersnamen. Op de pagina <i>Spelers</i> worden, met toestemming van de betrokkenen, statistieken van een kleine groep vaste spelers getoond. Wil je dat jouw gegevens daar niet meer staan, neem dan contact op; dan verwijderen we ze zo snel mogelijk.</p>
+  <h2>Jouw rechten</h2>
+  <p>Onder de AVG heb je recht op inzage, rectificatie, verwijdering en bezwaar. Omdat wij vrijwel geen persoonsgegevens verwerken, zijn er meestal weinig gegevens om in te zien, maar je kunt altijd een verzoek indienen via de <a href="#/contact">contactpagina</a>. Heb je een klacht? Dan kun je die indienen bij de Autoriteit Persoonsgegevens.</p>
+  <h2>Wijzigingen</h2><p>We kunnen dit beleid aanpassen, bijvoorbeeld als we functies toevoegen. De datum bovenaan laat zien wanneer het voor het laatst is gewijzigd.</p>`);
+}
+
+function renderTerms(app) {
+  prose(app, `<h1>Gebruiksvoorwaarden</h1><p class="meta">Laatst bijgewerkt: ${SITE_UPDATED}</p>
+  <p>Door Rift Companion te gebruiken ga je akkoord met deze voorwaarden.</p>
+  <h2>1. Gebruik van de website</h2><p>Je mag de website gratis gebruiken voor persoonlijk, niet-commercieel gebruik. Het is niet toegestaan de website te verstoren, te overbelasten of de inhoud geautomatiseerd in bulk over te nemen.</p>
+  <h2>2. Indicatieve informatie</h2><p>Alle adviezen, tiers, win rates, builds, combo's en schattingen zijn <b>indicaties</b> op basis van onze steekproef en eigen regels. Ze zijn geen garantie voor succes in een game. De cijfers kunnen afwijken van de werkelijkheid en niet alle patches zijn direct verwerkt.</p>
+  <h2>3. Geen garanties en aansprakelijkheid</h2><p>De website wordt aangeboden "zoals hij is". Wij geven geen garantie op juistheid, volledigheid of beschikbaarheid en zijn niet aansprakelijk voor schade die voortvloeit uit het gebruik van de website, voor zover de wet dit toestaat.</p>
+  <h2>4. Intellectuele eigendom</h2><p>League of Legends, alle champions, items, runes en bijbehorende namen, afbeeldingen en teksten zijn eigendom van Riot Games, Inc. Rift Companion is niet door Riot Games goedgekeurd en niet met Riot Games verbonden. De eigen inhoud, vertalingen en code van deze website mag niet zonder toestemming worden hergebruikt.</p>
+  <h2>5. Wijzigingen</h2><p>Wij kunnen de website en deze voorwaarden op elk moment aanpassen. Voortgezet gebruik betekent dat je de nieuwe voorwaarden accepteert.</p>
+  <h2>6. Toepasselijk recht</h2><p>Op deze voorwaarden is Nederlands recht van toepassing.</p>`);
+}
+
+function renderContact(app) {
+  prose(app, `<h1>Contact</h1><p class="meta">Laatst bijgewerkt: ${SITE_UPDATED}</p>
+  <p>Een fout gevonden, een idee voor een nieuwe functie of een vraag over je gegevens? We horen het graag.</p>
+  <div class="panel"><h3 style="margin-top:0">Melding of idee doorgeven</h3><p>Maak een melding aan op GitHub. Dat is de snelste manier om ons te bereiken.</p>
+  <a class="btn primary" href="${GITHUB_ISSUES}" target="_blank" rel="noopener">Open een melding op GitHub →</a></div>
+  <h2>Privacyverzoeken</h2><p>Wil je dat jouw gegevens van de pagina <i>Spelers</i> worden verwijderd, of heb je een ander verzoek over privacy? Meld dat via dezelfde link, dan handelen we het zo snel mogelijk af.</p>`);
+}
+
 
 /* ---------- Lane / tierlist ---------- */
 function renderLane(app, [lane = 'TOP']) {
@@ -650,6 +753,8 @@ async function renderChamp(app, [id, lane]) {
   }
   if (location.hash.indexOf(c.id) < 0) return; // gebruiker is alweer weg
   const B = buildFor(c, lane), A = B.A;
+  document.title = `${c.name} – beste runes, items en combo's (${LANES[lane].label}) | Rift Companion`;
+  document.querySelector('meta[name=description]')?.setAttribute('content', `${c.name} (${c.title}) in ${LANES[lane].label}: runes, items, summoner spells, skill-volgorde en combo's, met win rate uit echte games.`);
   const setup = B.runes[Math.min(S.ui.setup, B.runes.length - 1)];
   const spellSet = B.spells[Math.min(S.ui.spell, B.spells.length - 1)] || [];
   const { good, bad } = matchups(c, lane);
@@ -1050,3 +1155,10 @@ loadAll().then(route).catch(err => {
   $('#app').innerHTML = `<div class="panel warn"><h2>Kon de Riot-data niet laden</h2><p>${esc(err.message)}</p><p>Controleer je internetverbinding (Data Dragon: ddragon.leagueoflegends.com) en ververs de pagina.</p></div>`;
   $('#verBadge').textContent = 'offline';
 });
+
+/* ---------- Menu, footer ---------- */
+$('#navToggle').addEventListener('click', () => { const o = $('#nav').classList.toggle('open'); $('#navToggle').setAttribute('aria-expanded', String(o)); });
+$('#ddBtn').addEventListener('click', e => { e.stopPropagation(); const o = $('#ddMenu').classList.toggle('open'); $('#ddBtn').setAttribute('aria-expanded', String(o)); });
+document.addEventListener('click', e => { if (!e.target.closest('.dd')) $('#ddMenu').classList.remove('open'); });
+$('#year').textContent = new Date().getFullYear();
+

@@ -3,37 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rift Companion – LoL Champion, Rune & Item Gids</title>
+<title>Rift Companion – League of Legends champions, runes, items en advies</title>
+<meta name="description" content="Rift Companion helpt je de juiste League of Legends champion te kiezen: advies op maat, tierlists per lane, runes, items, combo's, team builder en counter picker. Nederlandstalig en bijgewerkt per patch.">
+<meta name="theme-color" content="#0a1018">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="canonical" href="https://juppejong.github.io/rift/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Rift Companion">
+<meta property="og:locale" content="nl_NL">
+<meta property="og:title" content="Rift Companion – kies de juiste League of Legends champion">
+<meta property="og:description" content="Advies op maat, tierlists, runes, items, combo's en een team builder voor alle champions. Nederlandstalig en bijgewerkt per patch.">
+<meta property="og:url" content="https://juppejong.github.io/rift/">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Rift Companion","url":"https://juppejong.github.io/rift/","inLanguage":"nl","description":"League of Legends champion-advies, tierlists, runes, items en combo's in het Nederlands."}</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#app">Naar de inhoud</a>
 <header class="top">
-  <a class="brand" href="#/"><span class="logo">◈</span> Rift<span>Companion</span></a>
-  <nav id="nav">
-    <a href="#/" data-r="home">Home</a>
+  <a class="brand" href="#/" aria-label="Rift Companion – home">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="none" stroke="#c8aa6e" stroke-width="2"/><path d="M16 7l4.2 9L16 25l-4.2-9z" fill="#0ac8b9"/><circle cx="16" cy="16" r="2" fill="#0a1018"/></svg>
+    <span>Rift<b>Companion</b></span></a>
+  <button class="navtoggle" id="navToggle" aria-label="Menu openen" aria-expanded="false" aria-controls="nav">☰</button>
+  <nav id="nav" aria-label="Hoofdmenu">
     <a href="#/advies" data-r="advies">🎯 Advies</a>
     <a href="#/lane/TOP" data-r="lane">Lanes</a>
     <a href="#/champions" data-r="champions">Champions</a>
-    <a href="#/counter" data-r="counter">Counter picker</a>
     <a href="#/team" data-r="team">Team builder</a>
-    <a href="#/stats" data-r="stats">Statistieken</a>
-    <a href="#/items" data-r="items">Items</a>
-    <a href="#/runes" data-r="runes">Runes</a>
-    <a href="#/favs" data-r="favs">★ Favorieten</a>
-    <a href="#/spelers" data-r="spelers">👥 Spelers</a>
+    <a href="#/counter" data-r="counter">Counter picker</a>
+    <div class="dd">
+      <button class="ddbtn" id="ddBtn" aria-expanded="false" aria-haspopup="true">Meer ▾</button>
+      <div class="ddmenu" id="ddMenu">
+        <a href="#/stats" data-r="stats">📈 Statistieken</a>
+        <a href="#/items" data-r="items">🛡 Items</a>
+        <a href="#/runes" data-r="runes">◈ Runes</a>
+        <a href="#/favs" data-r="favs">★ Favorieten</a>
+        <a href="#/spelers" data-r="spelers">👥 Spelers</a>
+        <a href="#/over" data-r="over">ℹ️ Over ons</a>
+      </div>
+    </div>
   </nav>
   <div class="search">
-    <input id="gsearch" type="search" placeholder="Zoek champion…  ( / )" autocomplete="off">
+    <input id="gsearch" type="search" placeholder="Zoek champion…  ( / )" autocomplete="off" aria-label="Zoek een champion">
     <div id="gresults" class="gresults" hidden></div>
   </div>
-  <span id="verBadge" class="ver">laden…</span>
+  <span id="verBadge" class="ver" title="Gamedata-versie">laden…</span>
 </header>
 
 <main id="app"><div class="loading"><div class="spinner"></div><p>Data van Riot laden…</p></div></main>
 
 <div id="modal" class="modal" hidden><div class="modal-card"><button class="close" id="modalClose" aria-label="Sluiten">×</button><div id="modalBody"></div></div></div>
 <div id="toast" class="toast" hidden></div>
-<footer class="foot">Rift Companion is niet verbonden met Riot Games. Gamedata via Riot Data Dragon; Nederlandse teksten zijn vertaald en kunnen afwijken van de officiële Engelse tekst. Builds en matchups zijn indicatief; win rates komen uit een eigen steekproef.</footer>
+
+<footer class="foot2">
+  <div class="foot-grid">
+    <div>
+      <a class="brand" href="#/"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="none" stroke="#c8aa6e" stroke-width="2"/><path d="M16 7l4.2 9L16 25l-4.2-9z" fill="#0ac8b9"/><circle cx="16" cy="16" r="2" fill="#0a1018"/></svg><span>Rift<b>Companion</b></span></a>
+      <p class="mute" style="max-width:300px">Kies de juiste champion en bouw de beste build. Nederlandstalig, gratis en bijgewerkt per patch.</p>
+      <p class="mute" id="footPatch" style="font-size:.8rem"></p>
+    </div>
+    <div><h4>Product</h4><a href="#/advies">Champion-advies</a><a href="#/lane/MID">Tierlists</a><a href="#/champions">Alle champions</a><a href="#/team">Team builder</a><a href="#/counter">Counter picker</a></div>
+    <div><h4>Gegevens</h4><a href="#/stats">Statistieken</a><a href="#/items">Items</a><a href="#/runes">Runes</a><a href="#/over">Hoe we werken</a></div>
+    <div><h4>Info</h4><a href="#/over">Over ons</a><a href="#/privacy">Privacybeleid</a><a href="#/voorwaarden">Gebruiksvoorwaarden</a><a href="#/contact">Contact</a></div>
+  </div>
+  <p class="legal">Rift Companion is niet door Riot Games goedgekeurd en weerspiegelt niet de standpunten of meningen van Riot Games of iemand die officieel betrokken is bij het produceren of beheren van Riot Games-eigendommen. Riot Games en alle bijbehorende eigendommen zijn handelsmerken of gedeponeerde handelsmerken van Riot Games, Inc. League of Legends © Riot Games, Inc.<br>
+  Gamegegevens via Riot Data Dragon. Nederlandse teksten zijn vertaald en kunnen afwijken van de officiële Engelse tekst. Builds, matchups en win rate-schattingen zijn indicatief.</p>
+  <p class="legal">© <span id="year"></span> Rift Companion</p>
+</footer>
 
 <script src="data.js"></script>
 <script src="stats.js" onerror="void 0"></script>

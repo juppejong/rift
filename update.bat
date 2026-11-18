@@ -6,8 +6,8 @@ REM   update.bat reset   -> matchdata helemaal opnieuw beginnen (gebruik bij een
 REM Voor het ophalen is een geldige Riot-key nodig in lol-companion\.env (development keys verlopen na 24 uur).
 set "APP=%~dp0..\lol-companion"
 cd /d "%APP%"
-if /I "%1"=="data" node collect.js --add 1000
-if /I "%1"=="reset" node collect.js --matches 1500 --reset
+if /I "%1"=="data" node collect.js --add 1000 --patch auto --days 7
+if /I "%1"=="reset" node collect.js --matches 1500 --reset --patch auto --days 3
 if errorlevel 1 (echo Matchdata ophalen mislukt - is je API-key verlopen? & pause & exit /b 1)
 node snapshot.js
 if errorlevel 1 echo Spelers verversen mislukt (key verlopen?) - de vorige spelersdata blijft staan.
