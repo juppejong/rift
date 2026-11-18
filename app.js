@@ -301,6 +301,7 @@ function route() {
   const app = $('#app');
   try { fn(app, parts.slice(1)); } catch (e) { console.error(e); app.innerHTML = `<div class="panel warn">Er ging iets mis: ${esc(e.message)}</div>`; }
   window.scrollTo(0, 0);
+  window.RC_FX?.onRoute(name);
 }
 
 /* ---------- Spelers: vergelijking van vaste accounts (momentopname uit friends.js, gemaakt met snapshot.js) ---------- */
@@ -560,49 +561,104 @@ function comboPanel(c, full, archKey) {
     <p class="mute" style="font-size:.78rem">Q W E R zijn je skills, AA is een basisaanval. Het zijn basiscombo's; pas ze aan op je situatie en oefen ze in de Practice Tool (Aangepast spel → Practice Tool).</p></div>`;
 }
 
-/* ---------- Home (landingspagina) ---------- */
+/* ---------- Home (cinematische landingspagina) ---------- */
+const HERO_ART = ['Ahri', 'Jinx', 'Yasuo', 'Zed', 'Seraphine', 'LeeSin', 'Syndra', 'Lux', 'Kaisa', 'Ornn', 'Thresh', 'Aatrox', 'Lucian', 'Sett'];
+const homeSel = { lane: '', style: '', diff: '' };
+
+function miniAdvice(sel) {
+  const saved = { ...quiz };
+  Object.assign(quiz, { lane: '', diff: '', style: '', dmg: '', tank: '', range: '', win: '', who: '', min: true }, sel);
+  let r = adviceList().slice(0, 3);
+  if (r.length < 3) { quiz.min = false; r = adviceList().slice(0, 3); } // te weinig data: toon alle champions
+  Object.assign(quiz, saved); return r;
+}
+function miniResultsHtml() {
+  return miniAdvice(homeSel).map((x, i) => `<a href="#/champ/${x.c.id}/${x.lane}" style="--i:${i}"><img src="${portrait(x.c)}" alt=""><b>${esc(x.c.name)}</b><small>${esc(x.why.slice(0, 2).join(' · ') || LANES[x.lane].label)}</small></a>`).join('');
+}
+function showcaseData(lane) {
+  let list = [];
+  if (S.stats?.lanes?.[lane]) list = Object.entries(S.stats.lanes[lane].champs).filter(([id, c]) => c.g >= MIN_GAMES && S.champs[id] && lanesOf(S.champs[id]).includes(lane)).map(([id, c]) => ({ c: S.champs[id], wr: 100 * c.w / c.g, g: c.g, s: wilson(c.w, c.g) })).sort((a, b) => b.s - a.s).slice(0, 5);
+  if (!list.length) list = lanePool(lane, false).filter(c => c.info.difficulty <= 4).slice(0, 5).map(c => ({ c, wr: 0, g: 0 }));
+  return list;
+}
+function showcaseHtml(lane) {
+  const list = showcaseData(lane), top = list[0];
+  return `<div class="sc-art swap" style="background-image:url('${CDN}/cdn/img/champion/splash/${top.c.id}_0.jpg')"><div class="who"><span>Sterkste ${LANES[lane].label}-pick</span><h3>${esc(top.c.name)}</h3><span>${esc(top.c.title)}</span></div></div>
+  <div class="sc-list"><div class="sc-tabs">${Object.entries(LANES).map(([k, l]) => `<button class="tab ${k === lane ? 'on' : ''}" data-sc="${k}">${l.icon} ${l.label}</button>`).join('')}</div>
+    ${list.map((x, i) => `<a class="row2" href="#/champ/${x.c.id}/${lane}" style="--i:${i}"><img src="${portrait(x.c)}" alt=""><div class="nm2"><b>${esc(x.c.name)}</b><div class="meter"><i style="--w:${x.wr ? Math.max(8, Math.min(100, (x.wr - 40) * 5)) : 40}%"></i></div></div><span class="mute">${x.wr ? x.wr.toFixed(0) + '%' : '–'}</span></a>`).join('')}
+    <a class="btn primary" style="margin-top:14px" href="#/lane/${lane}">Alle ${LANES[lane].label}-champions →</a></div>`;
+}
+
 function renderHome(app) {
   const total = S.champList.length, items = completed.length, matches = S.stats?.meta?.matches || 0;
-  let top = [];
-  if (S.stats) {
-    Object.entries(S.stats.lanes).forEach(([lane, L]) => Object.entries(L.champs).forEach(([id, c]) => {
-      if (c.g >= MIN_GAMES && S.champs[id] && lanesOf(S.champs[id]).includes(lane)) top.push({ id, lane, s: wilson(c.w, c.g) });
-    }));
-    top = top.sort((a, b) => b.s - a.s).slice(0, 8);
-  }
-  const feats = [
-    ['🎯', 'Champion-advies', 'Beantwoord een paar vragen over lane, speelstijl en ervaring en krijg direct een top 10 op maat.', '#/advies'],
-    ['📊', 'Tierlists per lane', 'Win rates en tiers uit echte Emerald+-games, met health- en schadecijfers per champion.', '#/lane/MID'],
-    ['⚔️', 'Builds, runes en combo\'s', 'Per champion en lane: runes, summoner spells, skill-volgorde, items en combo\'s met uitleg.', '#/champions'],
-    ['🧩', 'Team builder', 'Vul één champion in en krijg suggesties voor de andere lanes, inclusief een win rate-schatting.', '#/team'],
-    ['🆚', 'Counter picker', 'Kies de lane en de vijandelijke champion en zie welke picks er het best tegenin gaan.', '#/counter'],
-    ['📈', 'Statistieken', 'Vergelijk health, armor, schade en win rate van alle champions in één sorteerbare tabel.', '#/stats'],
-  ];
+  const runesN = S.runes.reduce((n, t) => n + t.slots.reduce((m, s) => m + s.runes.length, 0), 0);
+  const patch = S.ver.split('.').slice(0, 2).join('.');
+  const art = HERO_ART.filter(id => S.champs[id]).map(id => { const c = S.champs[id]; return { url: `${CDN}/cdn/img/champion/splash/${id}_0.jpg`, href: `#/champ/${id}/${lanesOf(c)[0] || 'MID'}`, icon: portrait(c), name: c.name }; });
+  const sorted = [...S.champList].sort((a, b) => (a.id.charCodeAt(1) * 7 + a.id.length) - (b.id.charCodeAt(1) * 7 + b.id.length));
+  const row1 = sorted.slice(0, 60), row2 = sorted.slice(60, 120);
+  const mq = r => r.concat(r).map(c => `<a href="#/champ/${c.id}/${lanesOf(c)[0] || 'MID'}" title="${esc(c.name)}"><img src="${portrait(c)}" alt="${esc(c.name)}" loading="lazy" width="74" height="74"></a>`).join('');
+  /* tierlist-viz */
+  const tier = showcaseData('MID').slice(0, 4);
+  /* build-viz */
+  const bc = S.champs.Ahri || S.champList[0], B = buildFor(bc, 'MID'), ks = B.runes[0]?.keystone?.r;
+  const buildIcons = [...B.core.slice(0, 3), ...B.boots.slice(0, 1)];
+  /* team-viz */
+  const team = [['TOP', 'Ornn'], ['JUNGLE', 'Sejuani'], ['MID', 'Ahri'], ['ADC', 'Jinx'], ['SUPPORT', 'Lulu']].filter(([, id]) => S.champs[id]).map(([lane, id]) => ({ lane, c: S.champs[id] }));
+  const est = estimateTeam(team).wr;
+  /* statistiek-viz */
+  const hpList = ['Sion', 'Malphite', 'Galio', 'Ahri', 'Jinx'].filter(id => S.champs[id]).map(id => ({ c: S.champs[id], hp: hpStats(S.champs[id]).hp })), hpMax = Math.max(...hpList.map(x => x.hp));
+  const cmb = window.RC_COMBOS?.Ahri?.[0];
+  const top = [];
+  if (S.stats) Object.entries(S.stats.lanes).forEach(([lane, L]) => Object.entries(L.champs).forEach(([id, c]) => { if (c.g >= MIN_GAMES && S.champs[id] && lanesOf(S.champs[id]).includes(lane)) top.push({ id, lane, s: wilson(c.w, c.g) }); }));
+  top.sort((a, b) => b.s - a.s);
+  const seg = (k, opts) => `<div class="qq2"><small>${k}</small>${opts.map(([v, l]) => `<button class="chipb ${homeSel[k === 'Lane' ? 'lane' : k === 'Stijl' ? 'style' : 'diff'] === v ? 'on' : ''}" data-hs="${k === 'Lane' ? 'lane' : k === 'Stijl' ? 'style' : 'diff'}|${v}">${l}</button>`).join('')}</div>`;
+
   app.innerHTML = `
-  <section class="hero2">
-    <span class="eyebrow">Patch ${esc(S.ver.split('.').slice(0, 2).join('.'))} · Nederlandstalig · gratis</span>
-    <h1>Kies de juiste champion. <em>Bouw de beste build.</em></h1>
-    <p class="lead">Advies, tierlists, runes, items en combo's voor alle ${total} champions in League of Legends. Zonder account, in het Nederlands en bijgewerkt per patch.</p>
-    <form class="hero-search" id="heroForm"><input id="heroInput" list="heroNames" placeholder="Zoek een champion, bijvoorbeeld Ahri…" aria-label="Zoek een champion" autocomplete="off"><button class="btn primary lg">Zoek</button></form>
-    <datalist id="heroNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
-    <div class="btnrow"><a class="btn primary lg" href="#/advies">🎯 Wat moet ik spelen?</a><a class="btn lg" href="#/lane/MID">Bekijk de tierlists</a></div>
-    <div class="metrics"><div><b>${total}</b><span>champions</span></div><div><b>${items}</b><span>items</span></div>${matches ? `<div><b>${matches.toLocaleString('nl-NL')}</b><span>geanalyseerde games</span></div>` : ''}<div><b>${esc(S.ver.split('.').slice(0, 2).join('.'))}</b><span>huidige patch</span></div></div>
+  <section class="hero3" id="hero3">
+    <div class="hero-slide"></div><div class="hero-slide"></div><div class="hero-shade"></div>
+    <div class="hero-aurora"><i></i><i></i><i></i></div><canvas id="fxCanvas" aria-hidden="true"></canvas>
+    <svg class="hex-ring r1" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 3 91 26.5v47L50 97 9 73.5v-47z" fill="none" stroke="#c8aa6e" stroke-width=".4"/><path d="M50 12 83 31v38L50 88 17 69V31z" fill="none" stroke="#0ac8b9" stroke-width=".3" stroke-dasharray="2 3"/></svg>
+    <svg class="hex-ring r2" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 3 91 26.5v47L50 97 9 73.5v-47z" fill="none" stroke="#0ac8b9" stroke-width=".4"/></svg>
+    <div class="hero-inner">
+      <span class="pill"><span class="dot"></span>Patch ${esc(patch)} is live · Nederlandstalig · gratis</span>
+      <h1><span class="w" style="--i:0">Kies</span> <span class="w" style="--i:1">de</span> <span class="w" style="--i:2">juiste</span> <span class="w shimmer" style="--i:3">champion</span><br><span class="w" style="--i:4">voor</span> <span class="w" style="--i:5"><span class="roll shimmer"><span><b>Top</b><b>Jungle</b><b>Mid</b><b>ADC</b><b>Support</b><b>Top</b></span></span></span></h1>
+      <p class="lead">Advies op maat, tierlists, runes, items en combo's voor alle ${total} champions. Zonder account, in het Nederlands en bijgewerkt per patch.</p>
+      <form class="hero-search" id="heroForm"><input id="heroInput" list="heroNames" placeholder="Zoek een champion, bijvoorbeeld Ahri…" aria-label="Zoek een champion" autocomplete="off"><button class="btn primary">Zoek</button></form>
+      <datalist id="heroNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      <div class="btnrow"><a class="btn primary lg" href="#/advies">🎯 Wat moet ik spelen?</a><a class="btn lg" href="#/lane/MID">Bekijk de tierlists</a></div>
+      <div class="glass-metrics"><div class="glass"><b data-count="${total}">${total}</b><span>champions</span></div><div class="glass"><b data-count="${items}">${items}</b><span>items</span></div>${matches ? `<div class="glass"><b data-count="${matches}">${matches}</b><span>geanalyseerde games</span></div>` : ''}<div class="glass"><b>${esc(patch)}</b><span>huidige patch</span></div></div>
+    </div>
+    <a class="nowshow" id="nowshow" href="#/"><img src="" alt="" width="30" height="30"><span></span></a><div class="scrollcue" aria-hidden="true"></div>
   </section>
 
-  <section class="sec"><h2>Alles wat je nodig hebt om beter te kiezen</h2><p class="sub">Eén plek voor champion-keuze, builds en teamsamenstelling, gebaseerd op echte data en uitgelegd in het Nederlands.</p>
-    <div class="feat-grid">${feats.map(([ic, t, d, h]) => `<a class="feat" href="${h}"><div class="ic">${ic}</div><h3>${t}</h3><p>${d}</p></a>`).join('')}</div></section>
+  <div class="marquee" aria-label="Alle champions"><div class="track">${mq(row1)}</div><div class="track rev">${mq(row2)}</div></div>
 
-  <section class="sec"><h2>Zo werkt het</h2><p class="sub">In drie stappen van twijfel naar een volledige build.</p>
-    <div class="steps"><div class="step"><h3>Kies je lane en stijl</h3><p>Geef aan wat je wilt spelen of laat de advies-quiz voor je kiezen.</p></div>
-    <div class="step"><h3>Vergelijk de opties</h3><p>Bekijk tiers, win rates, health en schade en zie waarom een champion bij je past.</p></div>
-    <div class="step"><h3>Neem de build over</h3><p>Runes, items, skills en combo's staan klaar, en je kunt een item set voor de League-client downloaden.</p></div></div></section>
+  <section class="sec2"><span class="kicker">Alles in één plek</span><h2>Alles wat je nodig hebt om <em>beter te kiezen</em></h2><p>Champion-keuze, builds en teamsamenstelling op basis van echte data, uitgelegd in het Nederlands.</p></section>
+  <div class="bento">
+    <div class="tile w4 tilt"><h3>🎯 Champion-advies</h3><p>Kies lane, stijl en niveau en zie direct welke champions bij je passen. Probeer het meteen:</p>
+      <div class="viz mini-q" id="miniQ">${seg('Lane', [['', 'Alle'], ...Object.entries(LANES).map(([k, l]) => [k, l.label])])}${seg('Stijl', [['', 'Maakt niet uit'], ['aggr', 'Agressief'], ['safe', 'Veilig'], ['team', 'Teamspeler']])}${seg('Niveau', [['', 'Elk niveau'], ['easy', 'Beginner'], ['hard', 'Ervaren']])}
+      <div class="mini-res" id="miniRes">${miniResultsHtml()}</div></div><a class="more" id="miniMore" href="#/advies">Volledig advies met 7 vragen →</a></div>
+    <a class="tile tilt" href="#/lane/MID"><h3>📊 Tierlists per lane</h3><p>Win rates uit echte Emerald+-games.</p><div class="viz bars">${tier.map((x, i) => `<div class="b" style="--i:${i}"><img src="${portrait(x.c)}" alt=""><div class="bar2"><i style="--w:${Math.max(10, Math.min(100, (x.wr - 40) * 5))}%;--i:${i}"></i></div><span>${x.wr ? x.wr.toFixed(0) + '%' : '–'}</span></div>`).join('')}</div><span class="more">Bekijk alle tierlists →</span></a>
+    <a class="tile tilt" href="#/champ/${bc.id}/MID"><h3>⚔️ Builds &amp; runes</h3><p>Runes, items en spells per champion en lane.</p><div class="viz items-row">${ks ? `<img class="ks" src="${runeImg(ks)}" alt="" style="--i:0">` : ''}${buildIcons.map((it, i) => `<img src="${itemImg(it)}" alt="${esc(it.name)}" style="--i:${i + 1}">`).join('')}</div><span class="more">Voorbeeld: ${esc(bc.name)} →</span></a>
+    <a class="tile tilt" href="#/team"><h3>🧩 Team builder</h3><p>Suggesties en een win rate-schatting.</p><div class="viz" style="display:flex;align-items:center;gap:14px;justify-content:space-between"><div class="slots">${team.map((t, i) => `<img src="${portrait(t.c)}" alt="${esc(t.c.name)}" style="--i:${i}">`).join('')}</div>
+      <div class="gauge" style="--off:${(264 * (1 - est / 100)).toFixed(0)}"><svg viewBox="0 0 100 100" width="96" height="96"><defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="#0ac8b9"/><stop offset="1" stop-color="#c8aa6e"/></linearGradient></defs><circle class="bg" cx="50" cy="50" r="42"/><circle class="fg" cx="50" cy="50" r="42"/></svg><b>${est.toFixed(0)}%</b></div></div><span class="more">Bouw je team →</span></a>
+    <a class="tile tilt" href="#/counter"><h3>🆚 Counter picker</h3><p>Zie wie het best tegen een vijand past.</p><div class="viz vs">${['Malphite', 'Yasuo'].filter(id => S.champs[id]).map((id, i) => `${i ? '<span class="x">VS</span>' : ''}<img src="${portrait(S.champs[id])}" alt="">`).join('')}</div><span class="more">Vind de counter →</span></a>
+    <a class="tile w4 tilt" href="#/stats"><h3>📈 Statistieken</h3><p>Vergelijk health, armor, schade en win rate van alle champions.</p><div class="viz bars">${hpList.map((x, i) => `<div class="b" style="--i:${i}"><img src="${portrait(x.c)}" alt=""><div class="bar2"><i style="--w:${(100 * x.hp / hpMax).toFixed(0)}%;--i:${i}"></i></div><span>${k0(x.hp)}</span></div>`).join('')}</div><span class="more">Open de statistieken →</span></a>
+    <a class="tile tilt" href="#/champ/Ahri/MID"><h3>⚡ Combo's</h3><p>Stap-voor-stap combo's met uitleg.</p><div class="viz items-row">${cmb ? cmb.k.split(' ').map((k, i) => `<span class="chip gold" style="--i:${i};font-size:1rem;padding:6px 12px">${k}</span>${i < cmb.k.split(' ').length - 1 ? '<span class="arrow">›</span>' : ''}`).join('') : ''}</div><span class="more">Bekijk de combo's →</span></a>
+  </div>
 
-  ${top.length ? `<section class="sec"><h2>Sterkste picks van deze patch</h2><p class="sub">Op basis van win rate en aantal games in onze steekproef (minstens ${MIN_GAMES} games).</p><div class="grid">${top.map(x => champCard(S.champs[x.id], x.lane, 'Primair')).join('')}</div></section>` : ''}
+  <section class="sec2"><span class="kicker">In drie stappen</span><h2>Van twijfel naar een <em>complete build</em></h2></section>
+  <div class="stepper"><div class="st"><div class="n">1</div><h3>Kies je lane en stijl</h3><p>Geef aan wat je wilt spelen, of laat de quiz kiezen.</p></div><div class="st"><div class="n">2</div><h3>Vergelijk de opties</h3><p>Tiers, win rates, health en schade, met uitleg waarom het past.</p></div><div class="st"><div class="n">3</div><h3>Neem de build over</h3><p>Runes, items, skills en combo's, plus een item set voor de client.</p></div></div>
 
-  <section class="sec"><h2>Kies je lane</h2>
-    <div class="lane-grid">${Object.entries(LANES).map(([k, l]) => `<a class="lane-card" href="#/lane/${k}"><div class="ic">${l.icon}</div><h3>${l.label}</h3><p>${l.desc}</p><p class="mute" style="margin-top:6px">${lanePool(k, false).length} primair · ${lanePool(k).length} totaal</p></a>`).join('')}</div></section>
+  <section class="sec2"><span class="kicker">Per lane</span><h2>De sterkste picks, <em>lane voor lane</em></h2><p>Op basis van win rate en aantal games in onze steekproef.</p></section>
+  <div class="showcase" id="showcase">${showcaseHtml('MID')}</div>
 
-  <section class="sec faq"><h2>Veelgestelde vragen</h2>
+  ${top.length ? `<section class="sec2"><span class="kicker">Deze patch</span><h2>Opvallende <em>picks</em></h2></section><div class="grid">${top.slice(0, 8).map(x => champCard(S.champs[x.id], x.lane, 'Primair')).join('')}</div>` : ''}
+
+  <div class="bignums"><div><b data-count="${total}">${total}</b><span>champions</span></div><div><b data-count="${items}">${items}</b><span>items</span></div><div><b data-count="${runesN}">${runesN}</b><span>runes</span></div>${matches ? `<div><b data-count="${matches}">${matches}</b><span>geanalyseerde games</span></div>` : ''}</div>
+
+  <section class="sec2"><span class="kicker">Handig om te weten</span><h2>Veelgestelde <em>vragen</em></h2></section>
+  <section class="faq" style="max-width:820px;margin:0 auto">
     <details><summary>Is Rift Companion gratis?</summary><p>Ja. Je hebt geen account nodig en alles is gratis te gebruiken.</p></details>
     <details><summary>Waar komen de gegevens vandaan?</summary><p>Champions, items, runes en afbeeldingen komen rechtstreeks van Riot Games (Data Dragon) en zijn daardoor altijd van de huidige patch. De win rates komen uit een eigen steekproef van ranked games van Emerald-spelers en hoger, opgehaald via de officiële Riot API.</p></details>
     <details><summary>Hoe betrouwbaar zijn de win rates en tiers?</summary><p>Ze zijn gebaseerd op een steekproef${matches ? ` van ${matches.toLocaleString('nl-NL')} games` : ''}. Een tier tonen we pas vanaf ${MIN_GAMES} games per champion, en kleine aantallen geven altijd ruis. Zie de cijfers als een goede indicatie, niet als een garantie.</p></details>
@@ -610,11 +666,21 @@ function renderHome(app) {
     <details><summary>Slaan jullie persoonlijke gegevens op?</summary><p>Nee. Er zijn geen accounts of tracking-cookies. Je favorieten en voorkeuren blijven in je eigen browser. Lees het <a href="#/privacy">privacybeleid</a> voor de details.</p></details>
     <details><summary>Is dit een officiële Riot Games-website?</summary><p>Nee. Rift Companion is een onafhankelijk project en is niet door Riot Games goedgekeurd. Alle handelsmerken zijn eigendom van Riot Games, Inc.</p></details></section>
 
-  <section class="band"><h2>Klaar om slimmer te kiezen?</h2><p>Beantwoord zeven korte vragen en je hebt binnen een minuut een top 10 champions die bij je passen.</p><a class="btn primary lg" href="#/advies">Start de advies-quiz →</a></section>`;
+  <section class="band2"><h2>Klaar om <span class="shimmer">slimmer</span> te kiezen?</h2><p>Beantwoord zeven korte vragen en je hebt binnen een minuut een top 10 champions die bij je passen.</p><a class="btn primary lg" href="#/advies">Start de advies-quiz →</a></section>`;
+
+  /* interacties */
   const go = e => { e.preventDefault(); const c = findChampByName($('#heroInput').value); if (c) location.hash = `#/champ/${c.id}/${lanesOf(c)[0] || 'MID'}`; else toast('Champion niet gevonden'); };
-  $('#heroForm').addEventListener('submit', go);
-  $('#heroInput').addEventListener('change', go);
+  $('#heroForm').addEventListener('submit', go); $('#heroInput').addEventListener('change', go);
+  $('#miniQ').addEventListener('click', e => {
+    const b = e.target.closest('[data-hs]'); if (!b) return; const [k, v] = b.dataset.hs.split('|'); homeSel[k] = v;
+    $$('[data-hs^="' + k + '|"]', $('#miniQ')).forEach(x => x.classList.toggle('on', x === b));
+    const r = $('#miniRes'); r.innerHTML = miniResultsHtml();
+  });
+  $('#miniMore').addEventListener('click', () => { Object.assign(quiz, { lane: homeSel.lane, style: homeSel.style, diff: homeSel.diff }); });
+  $('#showcase').addEventListener('click', e => { const b = e.target.closest('[data-sc]'); if (!b) return; $('#showcase').innerHTML = showcaseHtml(b.dataset.sc); });
+  window.RC_FX?.hero({ art });
 }
+
 
 /* ---------- Tekstpagina's: over, privacy, voorwaarden, contact ---------- */
 const SITE_UPDATED = '18 november 2026';
