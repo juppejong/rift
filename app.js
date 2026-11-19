@@ -261,7 +261,7 @@ const itemRow = (arr, sep = false) => `<div class="items">${arr.map((i, idx) => 
 /* ---------- routes ---------- */
 const routes = {
   home: renderHome, lane: renderLane, champions: renderChampions, champ: renderChamp, counter: renderCounter,
-  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers, advies: renderAdvice, over: renderAbout, privacy: renderPrivacy, voorwaarden: renderTerms, contact: renderContact,
+  team: renderTeam, items: renderItems, runes: renderRunes, favs: renderFavs, stats: renderStats, spelers: renderPlayers, advies: renderAdvice, leren: renderLearn, over: renderAbout, privacy: renderPrivacy, voorwaarden: renderTerms, contact: renderContact,
 };
 
 /* ---------- Gedeelde helpers (ook in de GitHub Pages-versie) ---------- */
@@ -284,7 +284,128 @@ function aggregate(list) {
   };
 }
 
-const PAGE_TITLES = { home: 'Rift Companion – League of Legends champions, runes, items en advies', advies: 'Champion-advies: wat moet ik spelen?', lane: 'Tierlist en champions per lane', champions: 'Alle League of Legends champions', counter: 'Counter picker', team: 'Team builder met win rate-schatting', stats: 'Champion-statistieken: health, schade en win rate', items: 'Alle items', runes: 'Alle runes', favs: 'Favorieten', spelers: 'Spelers', me: 'Mijn account', over: 'Over ons', privacy: 'Privacybeleid', voorwaarden: 'Gebruiksvoorwaarden', contact: 'Contact' };
+/* ---------- Leer-modus: een champion echt leren spelen ---------- */
+const LSTEPS = [['know', 'Ken je champion', '🧭'], ['skills', 'Leer je skills', '🎯'], ['setup', 'Je setup', '🛠'], ['combos', "Combo's", '⚡'], ['lane', 'De laningfase', '⚔️'], ['mid', 'Midgame & teamfights', '🛡'], ['practice', 'Oefenen', '🏋️'], ['quiz', 'Test jezelf', '✅']];
+const learnStore = {
+  load() { try { return JSON.parse(localStorage.getItem('rc_learn') || '{}'); } catch { return {}; } },
+  save(o) { try { localStorage.setItem('rc_learn', JSON.stringify(o)); } catch { } },
+};
+const learnKey = (id, lane) => `${id}|${lane}`;
+function learnProgress(rec) { const d = rec?.steps || {}; return LSTEPS.filter(([k]) => d[k]).length; }
+const ringHtml = (done, total, size = 84) => { const r = 34, C = 2 * Math.PI * r, f = C * (1 - done / total);
+  return `<svg class="ring" viewBox="0 0 84 84" width="${size}" height="${size}"><circle cx="42" cy="42" r="${r}" fill="none" stroke="#ffffff1c" stroke-width="7"/><circle class="rf" cx="42" cy="42" r="${r}" fill="none" stroke="url(#rg)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${f.toFixed(1)}" transform="rotate(-90 42 42)"/><defs><linearGradient id="rg" x1="0" x2="1"><stop offset="0" stop-color="#0ac8b9"/><stop offset="1" stop-color="#c8aa6e"/></linearGradient></defs><text x="42" y="47" text-anchor="middle" fill="#fff" font-family="Georgia,serif" font-size="19">${done}/${total}</text></svg>`; };
+const learnLevel = d => d >= 8 ? '🏆 Klaar voor ranked' : d >= 5 ? 'Gevorderd' : d >= 2 ? 'Op weg' : 'Beginner';
+
+function renderLearn(app, [id, lane]) { if (!id) return learnHome(app); return learnChamp(app, id, lane); }
+
+function learnHome(app) {
+  const store = learnStore.load();
+  const started = Object.entries(store).map(([k, rec]) => { const [cid, ln] = k.split('|'); return { c: S.champs[cid], ln, rec }; }).filter(x => x.c && LANES[x.ln]);
+  const easy = Object.keys(LANES).map(l => ({ l, list: lanePool(l, false).filter(c => c.info.difficulty <= 3).slice(0, 4) }));
+  app.innerHTML = `<section class="learn-hero"><span class="pill"><span class="dot"></span>Leer-modus</span>
+    <h1>Leer een champion <span class="shimmer">echt</span> spelen</h1>
+    <p class="lead">Een stappenplan van kennismaking tot ranked-klaar: skills, setup, combo's, de laningfase, teamfights, oefenopdrachten en een beslissingsquiz. Je voortgang wordt bewaard en je kunt je eigen games vergelijken met richtwaarden.</p>
+    <form class="hero-search" id="lForm" style="max-width:640px"><input id="lInput" list="lNames" placeholder="Welke champion wil je leren?" aria-label="Champion" autocomplete="off"><button class="btn primary">Start</button></form>
+    <datalist id="lNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist></section>
+  ${started.length ? `<h2>Jouw leertrajecten</h2><div class="lgrid">${started.map(({ c, ln, rec }) => { const d = learnProgress(rec); return `<a class="lcard" href="#/leren/${c.id}/${ln}"><img src="${portrait(c)}" alt=""><div><b>${esc(c.name)}</b><small>${LANES[ln].icon} ${LANES[ln].label} · ${learnLevel(d)}</small><div class="pbar"><i style="width:${100 * d / 8}%"></i></div></div><span class="mute">${d}/8</span></a>`; }).join('')}</div>` : ''}
+  <h2>Begin met een makkelijke champion</h2><p class="mute">Champions met een lage moeilijkheid, ideaal om de basis te leren.</p>
+  ${easy.map(({ l, list }) => `<h3>${LANES[l].icon} ${LANES[l].label}</h3><div class="lgrid">${list.map(c => `<a class="lcard" href="#/leren/${c.id}/${l}"><img src="${portrait(c)}" alt=""><div><b>${esc(c.name)}</b><small>${esc(c.title)}</small></div>${diffBar(c.info.difficulty)}</a>`).join('')}</div>`).join('')}
+  <h2>Zo werkt het</h2><div class="steps-grid">${LSTEPS.map(([k, t, ic], i) => `<div class="panel"><div style="font-size:1.6rem">${ic}</div><b>${i + 1}. ${t}</b></div>`).join('')}</div>`;
+  const go = e => { e.preventDefault(); const c = findChampByName($('#lInput').value); if (c) location.hash = `#/leren/${c.id}/${lanesOf(c)[0] || 'MID'}`; else toast('Champion niet gevonden'); };
+  $('#lForm').addEventListener('submit', go); $('#lInput').addEventListener('change', go);
+}
+
+async function learnChamp(app, id, lane) {
+  const c = S.champs[id] || champByKey[nk(id)];
+  if (!c) { app.innerHTML = '<div class="empty">Champion niet gevonden.</div>'; return; }
+  const lanes = lanesOf(c); if (!lane || !LANES[lane]) lane = lanes[0] || 'MID';
+  app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  let full = S.full[c.id];
+  if (!full) { try { full = (await getJSON(`${CDN}/cdn/${S.ver}/data/${LOCALE}/champion/${c.id}.json`)).data[c.id]; S.full[c.id] = full; } catch { full = null; } }
+  if (location.hash.indexOf(c.id) < 0) return;
+  document.title = `Leer ${c.name} spelen (${LANES[lane].label}) | Rift Companion`;
+  const L = window.RC_LEARN || { lane: {}, arch: {}, champs: {}, quiz: {}, quizGroup: {}, bench: {} };
+  const B = buildFor(c, lane), A = B.A, ak = B.archKey, grp = L.quizGroup[ak] || 'fighter', G = L.champs[c.id] || {}, AR = L.arch[grp] || L.arch.fighter || {};
+  const prio = full ? skillPrio(full) : [], store = learnStore.load(), key = learnKey(c.id, lane), rec = store[key] || (store[key] = { steps: {}, drills: {}, quiz: null });
+  const setup = B.runes[0], spellSet = B.spells[0] || [], { good, bad } = matchups(c, lane), h = hpStats(c);
+  const tags = full ? [...new Set([full.passive, ...full.spells].flatMap(s => skillTags(plain(s.description)).map(t => t[0])))] : [];
+  const strengths = [], weak = [];
+  if (hpRating(c) >= 4) strengths.push('Veel health (taai)'); if (dmgRating(c, lane) >= 4) strengths.push('Veel schade'); if (h.rng >= 500) strengths.push('Groot aanvalsbereik'); if (c.info.difficulty <= 3) strengths.push('Makkelijk te leren');
+  if (h.ms >= 345) strengths.push('Snel'); if (tags.includes('CC')) strengths.push('Heeft crowd control'); if (tags.includes('Mobiliteit')) strengths.push('Heeft mobiliteit');
+  if (hpRating(c) <= 2) weak.push('Weinig health (kwetsbaar)'); if (h.rng < 200) weak.push('Moet dichtbij komen'); if (c.info.difficulty >= 7) weak.push('Moeilijk te beheersen'); if (full && !tags.includes('Mobiliteit')) weak.push('Weinig ontsnappingsmiddelen'); if (dmgRating(c, lane) <= 2) weak.push('Weinig eigen schade');
+  const li = a => `<ul class="list">${(a || []).map(t => `<li>${esc(t)}</li>`).join('')}</ul>`;
+  const runeIcon = x => x.r ? `<img class="ri" src="${runeImg(x.r)}" alt="${esc(x.r.name)}" title="${esc(x.r.name)}" data-rune="${x.r.id}">` : '';
+  const combos = window.RC_COMBOS?.[c.id] || [], bench = L.bench[lane] || {};
+
+  /* persoonlijke voortgang uit echte games */
+  const players = window.RC_FRIENDS?.players || [];
+  const personal = who => {
+    const P = players.find(p => p.account.name === who); if (!P) return '';
+    const M = P.matches.filter(m => m.champ === c.id).slice(0, 20);
+    if (M.length < 3) return `<p class="mute">${esc(who)} heeft nog te weinig games op ${esc(c.name)} in de data (${M.length}).</p>`;
+    const T = aggregate(M), half = Math.floor(M.length / 2), newer = aggregate(M.slice(0, half)), older = aggregate(M.slice(half));
+    const row = (label, v, goal, fmt, higher) => { const ok = higher ? v >= goal : v <= goal; return `<tr><td>${label}</td><td><b>${fmt(v)}</b></td><td class="mute">${higher ? '≥' : '≤'} ${fmt(goal)}</td><td class="${ok ? 'upc' : 'downc'}">${ok ? '✔ op koers' : '✖ nog te verbeteren'}</td></tr>`; };
+    const arrow = (a, b, hi = true) => Math.abs(a - b) < .05 * Math.max(1, Math.abs(b)) ? '→' : (a > b) === hi ? '▲' : '▼';
+    return `<p class="mute">Laatste ${M.length} games van <b>${esc(who)}</b> op ${esc(c.name)}: ${T.w}W ${T.g - T.w}L (${(100 * T.w / T.g).toFixed(0)}%).</p>
+      <table class="tbl"><thead><tr><th>Maatstaf</th><th>Jij</th><th>Richtwaarde</th><th></th></tr></thead><tbody>
+      ${lane === 'SUPPORT' ? '' : row('CS per minuut', T.cspm, bench.cspm, v => v.toFixed(1), true)}${row('Deaths per game', T.d, bench.deaths, v => v.toFixed(1), false)}${row('Kill participation', T.kp, bench.kp, v => v.toFixed(0) + '%', true)}${row('Vision per minuut', T.vpm, bench.vpm, v => v.toFixed(2), true)}</tbody></table>
+      <p class="mute" style="font-size:.84rem">Trend (nieuwste ${half} t.o.v. oudere games): deaths ${arrow(newer.d, older.d, false)} ${newer.d.toFixed(1)} vs ${older.d.toFixed(1)} · KDA ${arrow(newer.kda, older.kda)} ${newer.kda.toFixed(2)} vs ${older.kda.toFixed(2)} · win rate ${arrow(newer.w / Math.max(1, newer.g), older.w / Math.max(1, older.g))} ${(100 * newer.w / Math.max(1, newer.g)).toFixed(0)}% vs ${(100 * older.w / Math.max(1, older.g)).toFixed(0)}%</p>`;
+  };
+  const whoSel = players.length ? `<div class="row" style="gap:8px;margin:8px 0"><label class="mute" for="lWho">Vergelijk met de games van:</label><select id="lWho" class="field"><option value="">– kies een speler –</option>${players.map(p => `<option ${rec.who === p.account.name ? 'selected' : ''}>${esc(p.account.name)}</option>`).join('')}</select></div><div id="lPersonal">${rec.who ? personal(rec.who) : '<p class="mute">Kies een speler om zijn echte games op deze champion met de richtwaarden te vergelijken.</p>'}</div>` : '<p class="mute">Geen spelersdata beschikbaar voor een persoonlijke vergelijking.</p>';
+
+  /* quiz */
+  const Q = L.quiz[grp] || [];
+  const quizHtml = Q.length ? Q.map((q, i) => `<div class="qz" data-qi="${i}"><p><b>${i + 1}. ${esc(q.q)}</b></p>${q.o.map((o, j) => `<label class="qopt"><input type="radio" name="q${i}" value="${j}"> ${esc(o)}</label>`).join('')}<div class="qx" hidden></div></div>`).join('') + `<div class="row" style="margin-top:10px"><button class="btn primary" id="qCheck">Controleer mijn antwoorden</button><span id="qScore" class="mute">${rec.quiz ? `Beste score: ${rec.quiz.best}/${rec.quiz.total}` : ''}</span></div>` : '<p class="mute">Voor deze klasse is er nog geen quiz.</p>';
+
+  const body = {
+    know: `<p><b>${esc(A.label)}</b> — ${esc(A.desc)}</p>${G.intro ? `<p>${esc(G.intro)}</p>` : ''}<p><b>Win-conditie:</b> ${esc(A.win)}</p>
+      <div class="tag-title">Power spikes</div><div class="pills">${A.spikes.map(s => `<span class="chip gold">${esc(s)}</span>`).join('')}</div>
+      <div class="cols2" style="margin-top:12px"><div><div class="tag-title">Sterke punten</div><div class="pills">${strengths.map(s => `<span class="chip tg-def">${esc(s)}</span>`).join('') || '<span class="mute">–</span>'}</div></div>
+      <div><div class="tag-title">Aandachtspunten</div><div class="pills">${weak.map(s => `<span class="chip tg-cc">${esc(s)}</span>`).join('') || '<span class="mute">–</span>'}</div></div></div>
+      ${full?.allytips?.length ? `<div class="tag-title">Tips van Riot</div>${li(full.allytips.map((t, n) => tr(`champ.${c.id}.a${n}`, t)))}` : ''}`,
+    skills: full ? `<p>Maximaliseer eerst <b>${prio[0]}</b>, dan <b>${prio[1]}</b> en daarna <b>${prio[2]}</b>. Neem je ultimate op level 6, 11 en 16.</p>${skillScheduleHtml(full, prio)}
+      <div class="tag-title">Wat doet elke skill?</div><div class="skcards">${[['P', full.passive.name, plain(full.passive.description), `champ.${c.id}.P`, `${CDN}/cdn/${S.ver}/img/passive/${full.passive.image.full}`, ''], ...full.spells.map((s, i) => ['QWER'[i], s.name, plain(s.description), `champ.${c.id}.${'QWER'[i]}`, `${CDN}/cdn/${S.ver}/img/spell/${s.image.full}`, s.cooldownBurn])].map(([k, n, d, kk, img, cd]) => `
+      <div class="skcard"><div class="row" style="gap:10px"><div class="skill"><img src="${img}" alt=""><b>${k}</b></div><div><b>${esc(n)}</b><div class="pills" style="margin:3px 0 0">${skillTags(d).map(([t, cl]) => `<span class="chip tg-${cl}">${t}</span>`).join('')}</div></div></div><p class="mute" style="font-size:.86rem;margin:8px 0 2px">${esc(tr(kk, d))}</p>${cd ? `<small class="mute">Cooldown ${esc(cd)} s</small>` : ''}</div>`).join('')}</div>
+      <p class="mute" style="font-size:.84rem">Oefenopdracht: noem uit je hoofd bij elke skill wat hij doet en wanneer je hem gebruikt voordat je verdergaat.</p>` : '<p class="mute">Kon de spelgegevens niet laden.</p>',
+    setup: `<div class="row" style="gap:18px;align-items:flex-start;flex-wrap:wrap"><div><div class="tag-title">Runes (${esc(setup.name)})</div><div class="row" style="gap:6px">${runeIcon(setup.keystone)}${setup.primaryRunes.map(runeIcon).join('')}<span class="arrow">|</span>${setup.secRunes.map(runeIcon).join('')}</div></div>
+      <div><div class="tag-title">Summoner spells</div><div class="row" style="gap:6px">${spellSet.map(s => `<img class="ri" src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}" alt="${esc(s.name)}" title="${esc(s.name)}">`).join('')}</div></div></div>
+      <div class="tag-title">Start</div>${itemRow([...B.start, ...B.ward])}<div class="tag-title">Laarzen</div>${itemRow(B.boots.slice(0, 2))}<div class="tag-title">Core build</div>${itemRow(B.core, true)}
+      <p style="margin-top:12px"><a class="btn" href="#/champ/${c.id}/${lane}">Alle opties op de build-pagina →</a></p>`,
+    combos: (combos.length ? combos.map(x => `<div class="combo"><b>${esc(x.n)}</b><div class="row" style="gap:6px;margin:6px 0">${comboSeq(x.k, full)}</div><div class="mute" style="font-size:.88rem">${esc(x.t)}</div></div>`).join('') : `<p class="mute">Voor ${esc(c.name)} staat er nog geen vaste combo. Algemene aanpak:</p>${li(window.RC_COMBO_TIPS?.[ak])}`) + `<div class="learnnote">🎮 <b>Oefenopdracht:</b> ga naar de Practice Tool en voer elke combo 10 keer foutloos uit voordat je hem in een echte game gebruikt.</div>`,
+    lane: `<div class="tag-title">Algemeen voor ${LANES[lane].label}</div>${li(L.lane[lane])}<div class="tag-title">Voor jouw soort champion</div>${li(AR.early)}${G.early ? `<div class="tag-title">Specifiek voor ${esc(c.name)}</div>${li(G.early)}` : ''}
+      <div class="cols2"><div><div class="tag-title">Sterk tegen</div><div class="pills">${good.slice(0, 6).map(r => `<a class="chip tg-def" href="#/champ/${r.o.id}/${lane}">${esc(r.o.name)}</a>`).join('') || '–'}</div></div><div><div class="tag-title">Lastig tegen</div><div class="pills">${bad.slice(0, 6).map(r => `<a class="chip tg-cc" href="#/champ/${r.o.id}/${lane}">${esc(r.o.name)}</a>`).join('') || '–'}</div></div></div>
+      <p class="mute" style="font-size:.8rem">Matchups zijn indicatief (op klasse en bereik gebaseerd). Zoek een specifieke tegenstander in de <a href="#/counter/${lane}">counter picker</a>.</p>`,
+    mid: `<div class="tag-title">Midgame</div>${li(AR.mid)}<div class="tag-title">In een teamfight</div>${li(AR.fight)}${G.mastery ? `<div class="tag-title">Specifiek voor ${esc(c.name)}</div>${li(G.mastery)}` : ''}<div class="tag-title">Veelgemaakte fouten</div>${li([...(G.mistakes || []), ...(AR.mistakes || [])])}`,
+    practice: `<p>Oefen in de <b>Practice Tool</b> (Aangepast spel → Practice Tool). Vink af wat je gedaan hebt.</p>
+      <div class="drills">${[...(AR.drills || []), ...(combos.length ? ['Voer je combo 10 keer foutloos uit.'] : [])].map((d, i) => `<label class="qopt"><input type="checkbox" data-drill="${i}" ${rec.drills[i] ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div>
+      <div class="tag-title">Doelen voor je eerste 10 games</div>${li([lane === 'SUPPORT' ? 'Plaats minstens 1 control ward per recall.' : `Haal ongeveer ${Math.round(bench.cspm * 10)} CS op minuut 10.`, `Ga niet vaker dan ${bench.deaths} keer dood per game.`, 'Bekijk na elke game één dood en noteer wat je anders had kunnen doen.', 'Speel dezelfde champion minstens 10 games achter elkaar voordat je oordeelt.'])}
+      <div class="tag-title">Hoe sta je ervoor?</div>${whoSel}`,
+    quiz: `<p>Drie korte vragen over beslissingen die bij een ${esc(A.label.split('(')[0].trim().toLowerCase())} horen. Je haalt de stap bij 2 van de 3 goed.</p>${quizHtml}`,
+  };
+
+  const done = learnProgress(rec), firstOpen = (LSTEPS.find(([k]) => !rec.steps[k]) || LSTEPS[0])[0];
+  app.innerHTML = `
+  <section class="ch-hero small"><div class="ch-bg" style="background-image:url('${splash(c.id, 0)}')"></div><div class="ch-shade"></div>
+    <div class="ch-in"><nav class="crumbs"><a href="#/leren">Leren</a> › ${esc(c.name)}</nav>
+      <div class="ch-row"><img class="ch-ic" src="${portrait(c)}" alt=""><div class="ch-title"><h1>Leer ${esc(c.name)}</h1><div class="sub">${LANES[lane].icon} ${LANES[lane].label} · ${esc(c.title)}</div></div>
+        <div class="ch-actions"><div id="lRing">${ringHtml(done, 8, 92)}</div><div><b id="lLevel" style="color:#fff">${learnLevel(done)}</b><div class="mute" style="font-size:.8rem">voortgang wordt in je browser bewaard</div></div><a class="btn" href="#/champ/${c.id}/${lane}">Naar de build →</a></div></div></div></section>
+  <div class="ch-lanes">${lanes.map(l => `<a class="tab ${l === lane ? 'on' : ''}" href="#/leren/${c.id}/${l}">${LANES[l].icon} ${LANES[l].label}</a>`).join('')}</div>
+  <div class="lsteps">${LSTEPS.map(([k, t, ic], i) => `<section class="lstep ${k === firstOpen ? 'open' : ''}" data-step="${k}"><header class="lhead" role="button" tabindex="0" aria-expanded="${k === firstOpen}"><span class="ln">${i + 1}</span><b>${ic} ${t}</b><label class="ldone" title="Markeer als klaar"><input type="checkbox" data-done="${k}" ${rec.steps[k] ? 'checked' : ''}><span>klaar</span></label><span class="chev">▾</span></header><div class="lbody"><div class="lin">${body[k]}</div></div></section>`).join('')}</div>`;
+
+  const persist = () => { const s = learnStore.load(); s[key] = rec; learnStore.save(s); const d = learnProgress(rec); $('#lRing').innerHTML = ringHtml(d, 8, 92); $('#lLevel').textContent = learnLevel(d); };
+  $$('.lhead').forEach(hd => { const tg = e => { if (e.target.closest('.ldone')) return; const sec = hd.parentElement, o = !sec.classList.contains('open'); sec.classList.toggle('open', o); hd.setAttribute('aria-expanded', String(o)); }; hd.addEventListener('click', tg); hd.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(e); } }); });
+  $$('[data-done]').forEach(cb => cb.addEventListener('change', () => { rec.steps[cb.dataset.done] = cb.checked; persist(); }));
+  $$('[data-drill]').forEach(cb => cb.addEventListener('change', () => { rec.drills[cb.dataset.drill] = cb.checked; persist(); }));
+  $('#lWho')?.addEventListener('change', e => { rec.who = e.target.value; persist(); $('#lPersonal').innerHTML = rec.who ? personal(rec.who) : ''; });
+  $('#qCheck')?.addEventListener('click', () => {
+    let ok = 0; $$('.qz').forEach(z => { const q = Q[+z.dataset.qi], sel = z.querySelector('input:checked'), good = sel && +sel.value === q.a; if (good) ok++;
+      const x = $('.qx', z); x.hidden = false; x.className = 'qx ' + (good ? 'ok' : 'warn'); x.innerHTML = (good ? '✔ Goed! ' : sel ? '✖ Niet helemaal. ' : 'Kies eerst een antwoord. ') + esc(q.x) + (good ? '' : ` <b>Juist antwoord:</b> ${esc(q.o[q.a])}`); });
+    rec.quiz = { best: Math.max(ok, rec.quiz?.best || 0), total: Q.length }; if (ok >= Math.ceil(Q.length * .6)) { rec.steps.quiz = true; const cb = $('[data-done="quiz"]'); if (cb) cb.checked = true; }
+    $('#qScore').textContent = `Score: ${ok}/${Q.length}`; persist();
+  });
+}
+
+const PAGE_TITLES = { home: 'Rift Companion – League of Legends champions, runes, items en advies', advies: 'Champion-advies: wat moet ik spelen?', leren: 'Leer een champion spelen', lane: 'Tierlist en champions per lane', champions: 'Alle League of Legends champions', counter: 'Counter picker', team: 'Team builder met win rate-schatting', stats: 'Champion-statistieken: health, schade en win rate', items: 'Alle items', runes: 'Alle runes', favs: 'Favorieten', spelers: 'Spelers', me: 'Mijn account', over: 'Over ons', privacy: 'Privacybeleid', voorwaarden: 'Gebruiksvoorwaarden', contact: 'Contact' };
 function setPageMeta(name, parts) {
   let t = PAGE_TITLES[name] || PAGE_TITLES.home;
   if (name === 'lane' && LANES[parts[1]]) t = `Tierlist ${LANES[parts[1]].label}: beste champions en win rates`;
@@ -666,6 +787,7 @@ function renderHome(app) {
     <details><summary>Slaan jullie persoonlijke gegevens op?</summary><p>Nee. Er zijn geen accounts of tracking-cookies. Je favorieten en voorkeuren blijven in je eigen browser. Lees het <a href="#/privacy">privacybeleid</a> voor de details.</p></details>
     <details><summary>Is dit een officiële Riot Games-website?</summary><p>Nee. Rift Companion is een onafhankelijk project en is niet door Riot Games goedgekeurd. Alle handelsmerken zijn eigendom van Riot Games, Inc.</p></details></section>
 
+  <section class="band2" style="margin-bottom:18px"><h2>Leer een champion <span class="shimmer">echt</span> spelen</h2><p>Stappenplan met skills, setup, combo's, laningfase, oefenopdrachten en een quiz. Je voortgang wordt bewaard.</p><a class="btn primary lg" href="#/leren">🎓 Start de leer-modus →</a></section>
   <section class="band2"><h2>Klaar om <span class="shimmer">slimmer</span> te kiezen?</h2><p>Beantwoord zeven korte vragen en je hebt binnen een minuut een top 10 champions die bij je passen.</p><a class="btn primary lg" href="#/advies">Start de advies-quiz →</a></section>`;
 
   /* interacties */
@@ -807,6 +929,68 @@ function renderFavs(app) {
 }
 
 /* ---------- Champion detail ---------- */
+/* ---------- Champion-pagina (hoofdgerecht): header, radar, win rate-grafiek, tabbladen, skill-schema ---------- */
+let statPct = null;
+function statPercentile(c, key) {
+  if (!statPct) { const all = S.champList.map(hpStats); statPct = {}; ['hp', 'ar', 'mr', 'ad', 'rng', 'ms'].forEach(k => statPct[k] = all.map(a => a[k]).sort((a, b) => a - b)); }
+  const v = hpStats(c)[key], A = statPct[key]; return Math.round(100 * A.filter(x => x <= v).length / A.length);
+}
+function radarHtml(c) {
+  const AX = [['Health', 'hp'], ['Armor', 'ar'], ['Magische weerstand', 'mr'], ['Aanvalskracht', 'ad'], ['Bereik', 'rng'], ['Loopsnelheid', 'ms']];
+  const cx = 130, cy = 130, R = 88, pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / AX.length; return [cx + Math.cos(a) * R * v / 100, cy + Math.sin(a) * R * v / 100]; };
+  const vals = AX.map(([, k]) => Math.max(8, statPercentile(c, k)));
+  const poly = vs => vs.map((v, i) => pt(i, v).map(n => n.toFixed(1)).join(',')).join(' ');
+  const h = hpStats(c), raw = [Math.round(h.hp), Math.round(h.ar), Math.round(h.mr), Math.round(h.ad), h.rng, h.ms];
+  return `<svg class="radar" viewBox="0 0 260 260" role="img" aria-label="Profiel van ${esc(c.name)}">
+    ${[25, 50, 75, 100].map(r => `<polygon points="${poly(AX.map(() => r))}" fill="none" stroke="#ffffff${r === 100 ? '26' : '14'}" stroke-width="1"/>`).join('')}
+    ${AX.map((_, i) => { const [x, y] = pt(i, 100); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#ffffff14"/>`; }).join('')}
+    <polygon points="${poly(AX.map(() => 50))}" fill="none" stroke="#0ac8b9aa" stroke-width="1" stroke-dasharray="3 4"/>
+    <polygon class="rpoly" points="${poly(vals)}" fill="#c8aa6e55" stroke="#e8c880" stroke-width="2" stroke-linejoin="round"/>
+    ${vals.map((v, i) => { const [x, y] = pt(i, v); return `<circle class="rdot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.6" fill="#f0e6d2" style="--i:${i}"><title>${AX[i][0]}: ${raw[i]} (hoger dan ${statPercentile(c, AX[i][1])}% van de champions)</title></circle>`; }).join('')}
+    ${AX.map(([l], i) => { const [x, y] = pt(i, 122); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="#9fb2c6" font-size="9.5">${l}</text>`; }).join('')}
+  </svg>`;
+}
+
+function wrChartHtml(c, lanes, lane) {
+  if (!S.stats) return '<p class="mute">Nog geen matchdata beschikbaar.</p>';
+  const rows = lanes.map(l => ({ l, st: statOf(c.id, l) })).filter(x => x.st);
+  if (!rows.length) return `<p class="mute">Nog geen games van ${esc(c.name)} in onze steekproef. Draai <code>update.bat data</code> voor meer data.</p>`;
+  const pos = v => Math.max(2, Math.min(98, (v - 40) * 5));
+  const bars = rows.map(({ l, st }) => `<div class="wrow ${l === lane ? 'cur' : ''}"><span class="wl">${LANES[l].icon} ${LANES[l].label}</span>
+      <div class="wtrack"><i class="wmid"></i><i class="wfill ${st.wr >= 50 ? 'up' : 'down'}" style="--w:${pos(st.wr)}%"></i></div><b class="${st.wr >= 50 ? 'upc' : 'downc'}">${st.wr.toFixed(1)}%</b><small>${st.g} games</small></div>`).join('');
+  /* positie t.o.v. alle champions in deze lane */
+  const L = S.stats.lanes[lane], all = L ? Object.entries(L.champs).filter(([, x]) => x.g >= MIN_GAMES).map(([id, x]) => ({ id, wr: 100 * x.w / x.g })) : [];
+  const me = statOf(c.id, lane); let dist = '';
+  if (all.length >= 8 && me && me.g >= MIN_GAMES) {
+    const wrs = all.map(x => x.wr).sort((a, b) => a - b), lo = wrs[0], hi = wrs[wrs.length - 1], avg = wrs.reduce((s, x) => s + x, 0) / wrs.length;
+    const rel = v => hi === lo ? 50 : 100 * (v - lo) / (hi - lo), beat = Math.round(100 * wrs.filter(x => x <= me.wr).length / wrs.length);
+    dist = `<div class="tag-title">Positie in ${LANES[lane].label}</div><div class="dist"><i class="dg"></i>${wrs.map(w => `<s style="left:${rel(w).toFixed(1)}%"></s>`).join('')}<i class="davg" style="left:${rel(avg).toFixed(1)}%" title="Gemiddeld ${avg.toFixed(1)}%"></i><i class="dme" style="left:${rel(me.wr).toFixed(1)}%"></i></div>
+      <div class="dl"><span>${lo.toFixed(0)}%</span><span>${esc(c.name)}: <b>${me.wr.toFixed(1)}%</b> · beter dan ${beat}% van de ${LANES[lane].label}-champions</span><span>${hi.toFixed(0)}%</span></div>`;
+  }
+  return `<div class="wr">${bars}</div>${dist}<p class="mute" style="font-size:.76rem;margin:8px 0 0">Emerald+ ${esc(S.stats.meta.platform.toUpperCase())}, patch ${esc(S.stats.meta.mainPatch || '?')}. Een trend per patch volgt zodra er meerdere patches zijn verzameld.</p>`;
+}
+
+/* wat doet een skill? (afgeleid uit de Engelse beschrijving) */
+function skillTags(desc) {
+  const d = (desc || '').toLowerCase(), t = [];
+  if (/stun|root|knock|airborne|silence|fear|charm|taunt|suppress|slow|immobiliz|pull|sleep|ground/.test(d)) t.push(['CC', 'cc']);
+  if (/dash|leap|blink|teleport|jump|move speed|movement speed|untargetable/.test(d)) t.push(['Mobiliteit', 'mob']);
+  if (/shield|heal|restor|damage reduction|invulnerable|stasis|armor and magic resist/.test(d)) t.push(['Verdediging / heal', 'def']);
+  if (/damage|deal/.test(d)) t.push(['Schade', 'dmg']);
+  return t;
+}
+/* standaard levelvolgorde op basis van de max-volgorde (p[0] eerst, dan p[1], dan p[2]; R op 6/11/16) */
+function skillSchedule(prio) {
+  const [a, b, c2] = prio, plan = [a, b, c2, a, a, 'R', a, b, a, b, 'R', b, b, c2, c2, 'R', c2, c2];
+  return plan;
+}
+function skillScheduleHtml(full, prio) {
+  const plan = skillSchedule(prio);
+  const rows = ['Q', 'W', 'E', 'R'].map((k, i) => { const s = full.spells[i];
+    return `<div class="srow"><div class="sk"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}" alt="" title="${esc(s.name)}"><b>${k}</b></div>${plan.map((p, lv) => `<span class="cell ${p === k ? 'on ' + (k === 'R' ? 'ult' : '') : ''}" style="--i:${lv}">${p === k ? lv + 1 : ''}</span>`).join('')}</div>`; }).join('');
+  return `<div class="sched"><div class="srow head"><div class="sk"></div>${plan.map((_, lv) => `<span class="cell hd">${lv + 1}</span>`).join('')}</div>${rows}</div>`;
+}
+
 async function renderChamp(app, [id, lane]) {
   const c = S.champs[id] || champByKey[nk(id)];
   if (!c) { app.innerHTML = '<div class="empty">Champion niet gevonden.</div>'; return; }
@@ -818,7 +1002,7 @@ async function renderChamp(app, [id, lane]) {
     catch (e) { full = null; }
   }
   if (location.hash.indexOf(c.id) < 0) return; // gebruiker is alweer weg
-  const B = buildFor(c, lane), A = B.A;
+  const B = buildFor(c, lane), A = B.A, st = statOf(c.id, lane);
   document.title = `${c.name} – beste runes, items en combo's (${LANES[lane].label}) | Rift Companion`;
   document.querySelector('meta[name=description]')?.setAttribute('content', `${c.name} (${c.title}) in ${LANES[lane].label}: runes, items, summoner spells, skill-volgorde en combo's, met win rate uit echte games.`);
   const setup = B.runes[Math.min(S.ui.setup, B.runes.length - 1)];
@@ -826,28 +1010,20 @@ async function renderChamp(app, [id, lane]) {
   const { good, bad } = matchups(c, lane);
   const skins = full?.skins || [{ num: 0, name: 'default' }];
   const prio = full ? skillPrio(full) : [];
+  const tab = ['build', 'combos', 'matchups', 'skills', 'tips'].includes(S.ui.ctab) ? S.ui.ctab : 'build';
+  const h = hpStats(c);
 
   const runeTile = (x, cls = '') => x.r
     ? `<div class="rune ${cls}" data-rune="${x.r.id}"><img src="${runeImg(x.r)}" alt="${esc(x.r.name)}"><span class="rn">${esc(x.r.name)}</span></div>`
     : `<div class="rune miss ${cls}"><img alt=""><span class="rn">${esc(x.missing)} <span class="mute">(niet in deze patch)</span></span></div>`;
   const SH = { AdaptiveForce: ['Adaptive Force', 'AdaptiveForce'], AttackSpeed: ['+10% Attack Speed', 'AttackSpeed'], AbilityHaste: ['+8 Ability Haste', 'CDRScaling'], MovementSpeed: ['+2% Movement Speed', 'MovementSpeed'], HealthScaling: ['+Health (schaalt met level)', 'HealthScaling'], Health: ['+65 HP', 'Health'], Tenacity: ['Tenacity & Slow Resist', 'Tenacity'] };
   const shardTile = k => { const [n, f] = SH[k] || [k, k]; return `<div class="rune shard"><img src="${CDN}/cdn/img/perk-images/StatMods/StatMods${f}Icon.png" alt="" onerror="this.style.visibility='hidden'"><span class="rn">${esc(n)}</span></div>`; };
+  const mcard = (r, cls) => `<a class="mcard ${cls}" href="#/champ/${r.o.id}/${lane}"><img src="${portrait(r.o)}" alt=""><div><b>${esc(r.o.name)}</b><small>${esc(r.why.join(' · ') || 'neutraal')}</small></div></a>`;
 
-  app.innerHTML = `
-  <div class="champ-hero"><div class="bg" id="chBg" style="background-image:url('${splash(c.id, 0)}')"></div>
-    <div class="in"><img class="ic" src="${portrait(c)}" alt="">
-      <div style="flex:1"><h1>${esc(c.name)}</h1><div class="sub">${esc(c.title)}</div>
-      <div class="pills">${c.tags.map(t => `<span class="chip gold">${TAG_NL[t] || t}</span>`).join('')}${lanes.map(l => `<a class="chip" href="#/champ/${c.id}/${l}">${LANES[l].icon} ${LANES[l].label}</a>`).join('')}${diffBar(c.info.difficulty)}</div></div>
-      <div class="row"><button class="btn" data-fav="${c.id}">${isFav(c.id) ? '★ Favoriet' : '☆ Favoriet'}</button></div></div></div>
-
-  <div class="tabs">${(lanes.length ? lanes : [lane]).map(l => `<a class="tab ${l === lane ? 'on' : ''}" href="#/champ/${c.id}/${l}">${LANES[l].icon} Build voor ${LANES[l].label}</a>`).join('')}</div>
-
-  <div class="cols"><div>
+  const buildPane = `
     <div class="panel"><h2>${esc(A.label)} ${dmgChip(A)}</h2><p>${esc(A.desc)}</p><p><b>Win-conditie:</b> ${esc(A.win)}</p>
       <div class="tag-title">Power spikes</div><div class="pills">${A.spikes.map(s => `<span class="chip gold">${esc(s)}</span>`).join('')}</div></div>
-
     ${dataPanel(c, lane)}
-
     <div class="panel"><h2>Runes</h2>
       <div class="setup-tabs">${B.runes.map((r, i) => `<button class="tab ${r === setup ? 'on' : ''}" data-setup="${i}">${esc(r.name)}</button>`).join('')}</div>
       <p class="mute">${esc(setup.note)}</p>
@@ -856,7 +1032,9 @@ async function renderChamp(app, [id, lane]) {
         <div class="rcol"><div class="tag-title">${esc(setup.secTree?.name || 'Secundair')}</div>${setup.secRunes.map(r => runeTile(r)).join('')}</div>
         <div class="rcol"><div class="tag-title">Stat shards</div>${setup.shards.map(shardTile).join('')}</div>
       </div></div>
-
+    <div class="panel"><h3 style="margin-top:0">Summoner spells</h3>
+      <div class="setup-tabs">${B.spells.map((p, i) => `<button class="tab ${p === spellSet ? 'on' : ''}" data-spell="${i}">${p.map(s => esc(s.name)).join(' + ')}</button>`).join('')}</div>
+      <div class="spellset">${spellSet.map(s => `<div class="spell" title="${esc(s.name)}: ${esc(tr('spell.' + s.key, plain(s.description)))}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><span>${esc(s.name)}</span></div>`).join('')}</div></div>
     <div class="panel"><h2>Items</h2>
       <div class="tag-title">Start</div>${itemRow([...B.start, ...B.ward])}
       <div class="tag-title">Laarzen</div>${itemRow(B.boots)}
@@ -864,54 +1042,80 @@ async function renderChamp(app, [id, lane]) {
       <div class="tag-title">Alternatieven / later</div>${itemRow(B.alt)}
       <div class="tag-title">Situationeel</div>
       <div class="cols2">
-        <div><b>Vs. veel AD / armor nodig</b>${itemRow(B.sit.armor)}</div>
-        <div><b>Vs. veel AP / MR nodig</b>${itemRow(B.sit.mr)}</div>
-        <div><b>Anti-heal</b>${itemRow(B.sit.antiheal)}</div>
-        <div><b>Penetratie vs. tanks</b>${itemRow(B.sit.pen)}</div>
-        <div><b>Defensief / laatste item</b>${itemRow(B.sit.defensive)}</div>
+        <div><b>Vs. veel AD / armor nodig</b>${itemRow(B.sit.armor)}</div><div><b>Vs. veel AP / MR nodig</b>${itemRow(B.sit.mr)}</div>
+        <div><b>Anti-heal</b>${itemRow(B.sit.antiheal)}</div><div><b>Penetratie vs. tanks</b>${itemRow(B.sit.pen)}</div><div><b>Defensief / laatste item</b>${itemRow(B.sit.defensive)}</div>
       </div>
       <div class="row" style="margin-top:14px"><button class="btn primary" id="dlSet">⬇ Item set (.json) voor League client</button><button class="btn" id="cpBuild">⧉ Kopieer build als tekst</button></div>
-      <p class="mute" style="font-size:.8rem">Plaats het bestand in <code>…\\League of Legends\\Config\\Champions\\${esc(c.id)}\\Recommended\\</code> en maak de map aan indien nodig.</p></div>
+      <p class="mute" style="font-size:.8rem">Plaats het bestand in <code>…\\League of Legends\\Config\\Champions\\${esc(c.id)}\\Recommended\\</code> en maak de map aan indien nodig.</p></div>`;
 
-    ${comboPanel(c, full, B.archKey)}
+  const skillsPane = full ? `
+    <div class="panel"><h2>Skill-volgorde</h2>
+      <p>Max-volgorde: <b>${prio.join(' › ')}</b> <span class="mute">(R op level 6, 11 en 16)</span></p>${skillScheduleHtml(full, prio)}
+      <p class="mute" style="font-size:.8rem;margin-top:10px">Schema op basis van cooldowns: de skill met de laagste cooldown wordt eerst gemaxt. Controleer of je ook voor deze lane een andere start nodig hebt.</p></div>
+    <div class="panel"><h2>Wat doet elke skill?</h2><div class="skcards">
+      ${[['P', full.passive.name, plain(full.passive.description), `champ.${c.id}.P`, `${CDN}/cdn/${S.ver}/img/passive/${full.passive.image.full}`, '', ''],
+      ...full.spells.map((s, i) => ['QWER'[i], s.name, plain(s.description), `champ.${c.id}.${'QWER'[i]}`, `${CDN}/cdn/${S.ver}/img/spell/${s.image.full}`, s.cooldownBurn, s.costBurn])].map(([k, n, d, key, img, cd, cost]) => `
+        <div class="skcard"><div class="row" style="gap:10px"><div class="skill"><img src="${img}" alt=""><b>${k}</b></div><div><b>${esc(n)}</b><div class="pills" style="margin:3px 0 0">${skillTags(d).map(([t, cl]) => `<span class="chip tg-${cl}">${t}</span>`).join('')}</div></div></div>
+          <p class="mute" style="font-size:.88rem;margin:8px 0 4px">${esc(tr(key, d))}</p>${cd ? `<small class="mute">Cooldown ${esc(cd)} s · kost ${esc(cost)}</small>` : ''}</div>`).join('')}</div></div>` : '<div class="panel"><p class="mute">Kon de spelgegevens niet laden.</p></div>';
 
-    <div class="panel"><h2>Skill-volgorde</h2>${full ? `
-      <div class="skillrow"><div class="skill" title="${esc(full.passive.name)}"><img src="${CDN}/cdn/${S.ver}/img/passive/${full.passive.image.full}"><b>P</b></div>
-      ${full.spells.map((s, i) => `<div class="skill" title="${esc(s.name)}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><b>${'QWER'[i]}</b></div>`).join('')}</div>
-      <p><b>Suggestie max-volgorde:</b> ${prio.join(' › ')} (R altijd op level 6/11/16). Start met de skill die het beste bij je lane past.</p>
-      <p class="mute" style="font-size:.8rem">Heuristiek: de skill met de laagste cooldown wordt eerst gemaxt. Controleer op het laatst of je champion-specifieke guides anders aanraden.</p>
-      <div class="cols2"><div><b>P – ${esc(full.passive.name)}</b><div class="mute" style="font-size:.85rem">${esc(tr(`champ.${c.id}.P`, plain(full.passive.description)))}</div></div>${full.spells.map((s, i) => `<div><b>${'QWER'[i]} – ${esc(s.name)}</b><div class="mute" style="font-size:.85rem">${esc(tr(`champ.${c.id}.${'QWER'[i]}`, plain(s.description)))}</div><div style="font-size:.78rem" class="mute">CD: ${esc(s.cooldownBurn)} · Kost: ${esc(s.costBurn)}</div></div>`).join('')}</div>` : '<p class="mute">Kon de spelgegevens niet laden.</p>'}</div>
+  const tipsPane = `
+    <div class="panel cols2"><div><h3 style="margin-top:0">Speel als ${esc(c.name)}</h3><ul class="list">${(full?.allytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.a${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div>
+      <div><h3 style="margin-top:0">Speel tegen ${esc(c.name)}</h3><ul class="list">${(full?.enemytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.e${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div></div>
+    <div class="panel"><h3 style="margin-top:0">Laning-tips (${LANES[lane].label})</h3><ul class="list">${A.laning.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
+    <div class="panel learncta"><div><h3 style="margin:0 0 4px">🎓 Wil je ${esc(c.name)} echt leren spelen?</h3><p class="mute" style="margin:0">Een stappenplan met oefenopdrachten, een beslissingsquiz en een vergelijking met je eigen games.</p></div><a class="btn primary" href="#/leren/${c.id}/${lane}">Start de leer-modus →</a></div>`;
 
-    ${full ? `<div class="panel cols2"><div><h3>Speel als ${esc(c.name)}</h3><ul class="list">${(full.allytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.a${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div>
-      <div><h3>Speel tegen ${esc(c.name)}</h3><ul class="list">${(full.enemytips || []).map((t, n) => `<li>${esc(tr(`champ.${c.id}.e${n}`, t))}</li>`).join('') || '<li class="mute">–</li>'}</ul></div></div>` : ''}
+  app.innerHTML = `
+  <section class="ch-hero" id="chHero">
+    <div class="ch-bg" id="chBg" style="background-image:url('${splash(c.id, 0)}')"></div><div class="ch-shade"></div>
+    <div class="ch-in">
+      <nav class="crumbs" aria-label="Kruimelpad"><a href="#/champions">Champions</a> › <a href="#/lane/${lane}">${LANES[lane].label}</a> › ${esc(c.name)}</nav>
+      <div class="ch-row"><img class="ch-ic" src="${portrait(c)}" alt="">
+        <div class="ch-title"><h1>${esc(c.name)}</h1><div class="sub">${esc(c.title)}</div>
+          <div class="pills">${c.tags.map(t => `<span class="chip gold">${TAG_NL[t] || t}</span>`).join('')}${(() => { const al = A.label.split('(')[0].trim(); return c.tags.some(t => (TAG_NL[t] || t).toLowerCase() === al.toLowerCase()) ? '' : `<span class="chip">${esc(al)}</span>`; })()}${diffBar(c.info.difficulty)}</div></div>
+        <div class="ch-actions"><button class="btn" data-fav="${c.id}">${isFav(c.id) ? '★ Favoriet' : '☆ Favoriet'}</button><a class="btn primary" href="#/leren/${c.id}/${lane}">🎓 Leer deze champion</a>
+          ${skins.length > 1 ? `<select id="skinSel" class="field" aria-label="Kies een skin">${skins.slice(0, 40).map(s => `<option value="${s.num}">${esc(s.name === 'default' ? 'Standaard skin' : s.name)}</option>`).join('')}</select>` : ''}</div></div>
+      <div class="ch-metrics">
+        ${st ? `<div class="glass"><b>${st.tier ? `<span class="tier-label t-${st.tier}" style="width:32px;height:32px">${st.tier}</span>` : st.wr.toFixed(0) + '%'}</b><span>${st.tier ? 'tier ' + LANES[lane].label : 'win rate'}</span></div><div class="glass"><b>${st.wr.toFixed(1)}%</b><span>win rate</span></div><div class="glass"><b>${st.g}</b><span>games in data</span></div>` : '<div class="glass"><b>–</b><span>nog geen matchdata</span></div>'}
+        <div class="glass"><b>${k0(h.hp)}</b><span>health lvl 18</span></div><div class="glass"><b>${c.info.difficulty}/10</b><span>moeilijkheid</span></div></div>
+    </div></section>
+
+  <div class="ch-lanes">${(lanes.length ? lanes : [lane]).map(l => `<a class="tab ${l === lane ? 'on' : ''}" href="#/champ/${c.id}/${l}">${LANES[l].icon} ${LANES[l].label}</a>`).join('')}</div>
+
+  <div class="ch-layout"><div class="ch-main">
+    <div class="ch-tabs" role="tablist">${[['build', '🛠 Build'], ['combos', "⚡ Combo's"], ['matchups', '🆚 Matchups'], ['skills', '🎯 Skills'], ['tips', '💡 Tips']].map(([k, l]) => `<button role="tab" class="ctab ${k === tab ? 'on' : ''}" data-ctab="${k}">${l}</button>`).join('')}</div>
+    <div class="tabpane ${tab === 'build' ? 'on' : ''}" data-pane="build">${buildPane}</div>
+    <div class="tabpane ${tab === 'combos' ? 'on' : ''}" data-pane="combos">${comboPanel(c, full, B.archKey)}</div>
+    <div class="tabpane ${tab === 'matchups' ? 'on' : ''}" data-pane="matchups">
+      <div class="panel"><h2>Sterk tegen (${LANES[lane].label})</h2><div class="mgrid">${good.map(r => mcard(r, 'good')).join('') || '<span class="mute">–</span>'}</div></div>
+      <div class="panel"><h2>Lastig tegen</h2><div class="mgrid">${bad.map(r => mcard(r, 'bad')).join('') || '<span class="mute">–</span>'}</div>
+        <p class="mute" style="font-size:.78rem;margin-top:10px">Indicatief op basis van klasse en bereik, niet op echte matchup-data. Zoek een specifieke tegenstander in de <a href="#/counter/${lane}">counter picker</a>.</p></div></div>
+    <div class="tabpane ${tab === 'skills' ? 'on' : ''}" data-pane="skills">${skillsPane}</div>
+    <div class="tabpane ${tab === 'tips' ? 'on' : ''}" data-pane="tips">${tipsPane}</div>
   </div>
 
-  <div>
-    <div class="panel"><h3>Summoner spells</h3>
-      <div class="setup-tabs">${B.spells.map((p, i) => `<button class="tab ${p === spellSet ? 'on' : ''}" data-spell="${i}">${p.map(s => esc(s.name)).join(' + ')}</button>`).join('')}</div>
-      <div class="spellset">${spellSet.map(s => `<div class="spell" title="${esc(s.name)}: ${esc(tr('spell.' + s.key, plain(s.description)))}"><img src="${CDN}/cdn/${S.ver}/img/spell/${s.image.full}"><span>${esc(s.name)}</span></div>`).join('')}</div></div>
+  <aside class="ch-side">
+    <div class="panel"><h3 style="margin-top:0">Profiel</h3>${radarHtml(c)}<p class="mute" style="font-size:.76rem;margin:0">Stipellijn = gemiddelde champion. Hoe verder naar buiten, hoe hoger dan andere champions (op level 18).</p></div>
+    <div class="panel"><h3 style="margin-top:0">Win rate</h3>${wrChartHtml(c, lanes, lane)}</div>
+    <div class="panel"><h3 style="margin-top:0">Basisstats</h3>
+      <table class="tbl" style="font-size:.84rem"><thead><tr><th></th><th>Lvl 1</th><th>Lvl 18</th></tr></thead><tbody>
+        <tr><td>Health</td><td>${c.stats.hp}</td><td>${Math.round(h.hp)}</td></tr><tr><td>Armor</td><td>${c.stats.armor}</td><td>${Math.round(h.ar)}</td></tr><tr><td>Magische weerstand</td><td>${c.stats.spellblock}</td><td>${Math.round(h.mr)}</td></tr>
+        <tr><td>Aanvalskracht</td><td>${c.stats.attackdamage}</td><td>${Math.round(h.ad)}</td></tr><tr><td>Bereik</td><td colspan="2">${c.stats.attackrange}</td></tr><tr><td>Loopsnelheid</td><td colspan="2">${c.stats.movespeed}</td></tr></tbody></table>
+      <div class="tag-title">Ratings</div><div class="mute" style="font-size:.85rem">Health ${dots(hpRating(c))}<br>Schade ${dots(dmgRating(c, lane))}</div></div>
+  </aside></div>`;
 
-    <div class="panel"><h3>Stats</h3>
-      ${[['Aanval', c.info.attack], ['Defense', c.info.defense], ['Magie', c.info.magic], ['Moeilijkheid', c.info.difficulty]].map(([n, v]) => `<div class="row" style="justify-content:space-between"><span>${n}</span>${diffBar(v)}</div>`).join('')}
-      <hr style="border-color:var(--line)"><div class="mute" style="font-size:.85rem">HP ${c.stats.hp} (+${c.stats.hpperlevel}) · Armor ${c.stats.armor} · MR ${c.stats.spellblock}<br>AD ${c.stats.attackdamage} · Bereik ${c.stats.attackrange} · MS ${c.stats.movespeed}</div>
-      <div class="tag-title">Op level 18</div><div class="mute" style="font-size:.85rem">HP ${Math.round(hpStats(c).hp)} · Armor ${Math.round(hpStats(c).ar)} · MR ${Math.round(hpStats(c).mr)} · AD ${Math.round(hpStats(c).ad)}<br>Health-rating ${dots(hpRating(c))} · Schade-rating ${dots(dmgRating(c, lane))}</div></div>
-
-    <div class="panel"><h3>Laning-tips</h3><ul class="list">${A.laning.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
-
-    <div class="panel"><h3>Sterk tegen (${LANES[lane].label})</h3><div class="mu good">${good.map(r => `<a href="#/champ/${r.o.id}/${lane}" title="${esc(r.why.join('; '))}"><img src="${portrait(r.o)}">${esc(r.o.name)}</a>`).join('') || '<span class="mute">–</span>'}</div>
-      <h3 style="margin-top:14px">Lastig tegen</h3><div class="mu bad">${bad.map(r => `<a href="#/champ/${r.o.id}/${lane}" title="${esc(r.why.join('; '))}"><img src="${portrait(r.o)}">${esc(r.o.name)}</a>`).join('') || '<span class="mute">–</span>'}</div>
-      <p class="mute" style="font-size:.78rem;margin-top:10px">Indicatief op basis van klasse en bereik, niet op echte matchup-data.</p></div>
-
-    ${full ? `<div class="panel"><h3>Skins</h3><div class="setup-tabs">${skins.slice(0, 14).map(s => `<button class="tab" data-skin="${s.num}">${esc(s.name === 'default' ? 'Standaard' : s.name)}</button>`).join('')}</div></div>` : ''}
-  </div></div>`;
-
-  /* handlers specifiek voor deze pagina */
+  /* tabbladen */
+  $$('[data-ctab]').forEach(b => b.onclick = () => {
+    S.ui.ctab = b.dataset.ctab;
+    $$('[data-ctab]').forEach(x => x.classList.toggle('on', x === b)); $$('.tabpane').forEach(p => p.classList.toggle('on', p.dataset.pane === S.ui.ctab));
+    $('.ch-tabs').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
   $$('[data-setup]').forEach(b => b.onclick = () => { S.ui.setup = +b.dataset.setup; renderChamp(app, [id, lane]); });
   $$('[data-spell]').forEach(b => b.onclick = () => { S.ui.spell = +b.dataset.spell; renderChamp(app, [id, lane]); });
-  $$('[data-skin]').forEach(b => b.onclick = () => { $('#chBg').style.backgroundImage = `url('${splash(c.id, b.dataset.skin)}')`; window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  const sel = $('#skinSel'); if (sel) sel.onchange = () => { const bg = $('#chBg'); bg.style.opacity = 0; setTimeout(() => { bg.style.backgroundImage = `url('${splash(c.id, sel.value)}')`; bg.style.opacity = ''; }, 250); };
   $('#dlSet').onclick = () => downloadItemSet(c, lane, B);
   $('#cpBuild').onclick = () => copyBuild(c, lane, B, setup, spellSet, prio);
 }
+
 
 function downloadItemSet(c, lane, B) {
   const blk = (type, arr) => ({ type, items: arr.filter(Boolean).map(i => ({ id: String(i.id), count: 1 })) });
