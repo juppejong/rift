@@ -1239,7 +1239,7 @@ function renderTeam(app) {
   app.innerHTML = `<h1>Team builder</h1><p class="mute">Vul één of meer champions in. Voor de lege lanes krijg je suggesties; klik op een suggestie om hem in te vullen en direct een win rate-schatting te zien.</p>
   <datalist id="champNames">${S.champList.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
   <div class="pickrow">${Object.entries(LANES).map(([k, l]) => { const c = findChampByName(teamState[k]); const h = c && hpStats(c);
-    return `<div class="slot"><h4>${l.icon} ${l.label}${c ? ` <button class="btn" data-clear="${k}" style="padding:0 8px;float:right" title="Leegmaken">×</button>` : ''}</h4>${c ? `<a href="#/champ/${c.id}/${k}"><img src="${portrait(c)}"></a>` : ''}
+    return `<div class="slot ${c ? 'filled' : ''}" ${c ? `style="--art:url('${splash(c.id, 0)}')"` : ''}><h4>${l.icon} ${l.label}${c ? ` <button class="btn" data-clear="${k}" style="padding:0 8px;float:right" title="Leegmaken">×</button>` : ''}</h4>${c ? `<a href="#/champ/${c.id}/${k}"><img src="${portrait(c)}"></a>` : ''}
       <input class="field" list="champNames" data-slot="${k}" placeholder="Champion…" value="${esc(c ? c.name : teamState[k])}" style="width:100%">
       ${c ? `<div class="pills" style="margin-top:6px">${badges(c, k)}</div>` : ''}</div>`; }).join('')}</div>
   <div class="row" style="margin:12px 0"><button class="btn" id="tClear">Alles leegmaken</button>
@@ -1255,7 +1255,7 @@ function renderTeam(app) {
 
 function renderSuggestions(out, picks) {
   const empty = Object.keys(LANES).filter(l => !teamState[l] || !findChampByName(teamState[l]));
-  if (!picks.length) { out.innerHTML = '<div class="empty">Kies hierboven eerst een champion; dan verschijnen hier suggesties voor de andere lanes.</div>'; return; }
+  if (!picks.length) { out.innerHTML = '<div class="empty team-empty"><div class="big">🛡</div><b>Bouw je droomteam</b><p class="mute">Kies hierboven een champion en je krijgt suggesties voor de andere lanes, met een win rate-schatting.</p><button class="btn primary" id="tDemo">✨ Probeer een voorbeeldteam</button></div>'; $('#tDemo')?.addEventListener('click', () => { ['Ornn', 'Lee Sin', 'Ahri', 'Jinx', 'Lulu'].forEach((n, i) => teamState[Object.keys(LANES)[i]] = n); renderTeam($('#app') || document.querySelector('main')); }); return; }
   if (!empty.length) { out.innerHTML = ''; return; }
   const cur = estimateTeam(picks);
   out.innerHTML = `<h2>Suggesties voor de lege lanes</h2><p class="mute">Gerangschikt op de geschatte team win rate als je hem kiest (huidig: <b>${cur.wr.toFixed(1)}%</b>). Klik om in te vullen.</p>` +
@@ -1303,7 +1303,7 @@ function analyseTeam(out, picks) {
   const conf = E.games >= 150 * picks.length ? 'hoog' : E.games >= 40 * picks.length ? 'middel' : 'laag';
 
   out.innerHTML = `<div class="cols"><div class="panel"><h2>Analyse</h2>${msgs.join('')}<p><b>Teamidentiteit:</b> ${esc(ident)}</p></div>
-  <div class="panel"><h2>📈 Geschatte win rate</h2><div style="font-size:2.2rem;font-family:Georgia,serif;color:var(--gold2)">${E.wr.toFixed(1)}%</div>
+  <div class="panel"><h2>📈 Geschatte win rate</h2><div class="wrgauge">${(() => { const v = Math.max(35, Math.min(65, E.wr)), f = (v - 35) / 30, C = 2 * Math.PI * 52, col = E.wr >= 52 ? '#3ec97b' : E.wr >= 49 ? '#c8aa6e' : '#e84057'; return `<svg viewBox="0 0 130 130" width="130" height="130"><circle cx="65" cy="65" r="52" fill="none" stroke="#ffffff14" stroke-width="10"/><circle cx="65" cy="65" r="52" fill="none" stroke="${col}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - f)).toFixed(1)}" transform="rotate(-90 65 65)" style="filter:drop-shadow(0 0 6px ${col}88)"/><text x="65" y="72" text-anchor="middle" fill="#fff" font-family="Georgia,serif" font-size="26">${E.wr.toFixed(1)}%</text></svg>`; })()}<div><b style="color:var(--gold2)">Team win rate</b><div class="mute" style="font-size:.85rem">${E.wr >= 52 ? 'Sterke samenstelling' : E.wr >= 49 ? 'Gemiddeld, bijna gelijk' : 'Lastiger dan gemiddeld'}</div></div></div>
    <div class="pills"><span class="chip">basis uit champion-WR’s: ${(50 + E.base).toFixed(1)}%</span>${Object.values(E.adj).map(a => `<span class="chip ${a.v > 0 ? 'gold' : a.v < 0 ? 'ad' : ''}">${a.v > 0 ? '+' : ''}${a.v.toFixed(1)} ${esc(a.t)}</span>`).join('')}</div>
    <p class="mute" style="font-size:.8rem;margin-top:8px">Betrouwbaarheid: <b>${conf}</b> (${E.games} games in de steekproef). Dit is een <b>schatting</b>: gemiddelde win rate per champion in zijn lane (naar 50% getrokken bij weinig games) plus kleine correcties voor samenstelling. Echte synergie tussen specifieke champions zit er niet in.</p></div></div>
   <div class="panel"><h2>Health &amp; schade per champion</h2><div style="overflow:auto"><table class="tbl"><thead><tr><th>Champion</th><th>Klasse</th><th>HP lvl 18</th><th>Armor</th><th>MR</th><th>AD</th><th>Schade</th><th>Schade genomen</th><th>Win rate</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -1318,10 +1318,10 @@ const statsUi = { lane: '', q: '', sort: 'hp', dir: -1, min: true };
 function renderStats(app, [lane = '']) {
   statsUi.lane = LANES[lane] ? lane : statsUi.lane;
   const hasD = S.stats && Object.values(S.stats.lanes).some(L => Object.values(L.champs).some(c => c.dn));
-  app.innerHTML = `<h1>Statistieken</h1><p class="mute">Vergelijk champions op health, defense en schade om te kiezen wat bij je past: veel health = taai, weinig health = kwetsbaar maar vaak meer schade.${hasD ? '' : ' <b>Schade-cijfers uit matchdata</b> verschijnen zodra je nieuwe games ophaalt met <code>refresh.bat</code>.'}</p>
+  app.innerHTML = `<h1>Statistieken</h1><p class="mute">Vergelijk champions op health, defense en schade om te kiezen wat bij je past: veel health = taai, weinig health = kwetsbaar maar vaak meer schade.${hasD ? '' : ' <b>Schade-cijfers uit matchdata</b> verschijnen zodra er nieuwe games zijn opgehaald.'}</p>
   <div class="toolbar"><select id="sl"><option value="">Alle lanes</option>${Object.entries(LANES).map(([k, l]) => `<option value="${k}" ${statsUi.lane === k ? 'selected' : ''}>${l.label}</option>`).join('')}</select>
   <input id="sq" placeholder="Zoek champion…" value="${esc(statsUi.q)}">${S.stats ? `<label class="mute"><input type="checkbox" id="smin" ${statsUi.min ? 'checked' : ''}> min. ${MIN_GAMES} games data</label>` : ''}<span class="mute" id="sc"></span></div>
-  <div style="overflow:auto"><table class="tbl" id="stbl"></table></div>`;
+  <div class="kpis" id="skpi"></div><div class="tblwrap"><table class="tbl stbl" id="stbl"></table></div>`;
   const COLS = [['name', 'Champion'], ['lane', 'Lane'], ['cls', 'Klasse'], ['hp', 'HP lvl 18'], ['ar', 'Armor'], ['mr', 'MR'], ['ehp', 'Eff. HP (fys.)'], ['ad', 'AD lvl 18'], ['rng', 'Bereik'], ['ms', 'MS'], ['g', 'Games'], ['wr', 'Win rate'], ['dpm', 'Schade/min'], ['tpm', 'Genomen/min']];
   const draw = () => {
     statsUi.lane = $('#sl').value; statsUi.q = $('#sq').value; statsUi.min = $('#smin') ? $('#smin').checked : false;
@@ -1333,11 +1333,14 @@ function renderStats(app, [lane = '']) {
     if (S.stats && statsUi.min) rows = rows.filter(r => r.g >= MIN_GAMES);
     const k = statsUi.sort, dir = statsUi.dir;
     rows.sort((a, b) => (typeof a[k] === 'string' ? a[k].localeCompare(b[k]) : a[k] - b[k]) * dir || a.name.localeCompare(b.name));
+    const kp = (lbl, ic, r, val) => r ? `<a class="kpi" href="#/champ/${r.c.id}/${r.l}"><img src="${portrait(r.c)}" alt=""><div><small>${ic} ${lbl}</small><b>${esc(r.c.name)}</b><span>${val(r)}</span></div></a>` : '';
+    const top = (key, flt = () => true) => rows.filter(r => r[key] >= 0 && flt(r)).sort((x, y) => y[key] - x[key])[0];
+    $('#skpi').innerHTML = rows.length ? kp('Hoogste win rate', '🏆', top('wr', r => r.g >= 30), r => r.wr.toFixed(1) + '% · ' + r.g + ' games') + kp('Meeste health', '❤️', top('hp'), r => Math.round(r.hp) + ' HP') + kp('Meeste schade/min', '⚔️', top('dpm'), r => Math.round(r.dpm) + ' per min') + kp('Hoogste eff. HP', '🛡', top('ehp'), r => Math.round(r.ehp)) : '';
     const f = v => v < 0 ? '<span class="mute">–</span>' : v;
     $('#stbl').innerHTML = `<thead><tr>${COLS.map(([key, label]) => `<th data-sort="${key}" style="cursor:pointer">${label}${statsUi.sort === key ? (dir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>
       <td><a href="#/champ/${r.c.id}/${r.l}"><img src="${portrait(r.c)}" width="24" height="24" style="border-radius:50%;vertical-align:middle"> ${esc(r.name)}</a></td><td>${r.lane}</td><td>${esc(r.cls)}</td>
-      <td>${Math.round(r.hp)}</td><td>${Math.round(r.ar)}</td><td>${Math.round(r.mr)}</td><td>${Math.round(r.ehp)}</td><td>${Math.round(r.ad)}</td><td>${r.rng}</td><td>${r.ms}</td>
-      <td>${f(r.g)}</td><td>${r.wr < 0 ? '<span class="mute">–</span>' : r.wr.toFixed(1) + '%'}</td><td>${r.dpm < 0 ? '<span class="mute">–</span>' : Math.round(r.dpm)}</td><td>${r.tpm < 0 ? '<span class="mute">–</span>' : Math.round(r.tpm)}</td></tr>`).join('')}</tbody>`;
+      <td><span class="hpb"><i style="width:${Math.min(100, r.hp / 38)}%"></i><b>${Math.round(r.hp)}</b></span></td><td>${Math.round(r.ar)}</td><td>${Math.round(r.mr)}</td><td>${Math.round(r.ehp)}</td><td>${Math.round(r.ad)}</td><td>${r.rng}</td><td>${r.ms}</td>
+      <td>${f(r.g)}</td><td>${r.wr < 0 ? '<span class="mute">–</span>' : `<span class="wrb ${r.wr >= 52 ? 'up' : r.wr < 48 ? 'dn' : ''}"><i style="width:${Math.max(4, Math.min(100, (r.wr - 40) * 5))}%"></i><b>${r.wr.toFixed(1)}%</b></span>`}</td><td>${r.dpm < 0 ? '<span class="mute">–</span>' : Math.round(r.dpm)}</td><td>${r.tpm < 0 ? '<span class="mute">–</span>' : Math.round(r.tpm)}</td></tr>`).join('')}</tbody>`;
     $('#sc').textContent = `${rows.length} rijen`;
     $$('#stbl th').forEach(th => th.onclick = () => { const key = th.dataset.sort; if (statsUi.sort === key) statsUi.dir *= -1; else { statsUi.sort = key; statsUi.dir = (key === 'name' || key === 'lane' || key === 'cls') ? 1 : -1; } draw(); });
   };
